@@ -16,6 +16,7 @@ impl Color {
     const RED: Color = Color { red: 255, green: 0, blue: 0 };
     const ORANGE: Color = Color { red: 255, green: 128, blue: 0 };
     const DARK_GREY: Color = Color { red: 32, green: 32, blue: 32 };
+    const BACKGROUND: Color = Color::DARK_GREY;
 }
 
 #[derive(Copy, Clone)]
@@ -26,10 +27,18 @@ struct Rect {
     height: usize
 }
 
+#[derive(Copy, Clone)]
+struct Button {
+    rect: Rect,
+    color: Color,
+    border: Border,
+}
+
 #[derive(Clone)]
 struct Canvas {
     width: usize,
     height: usize,
+    background: Color,
     bytes: Vec<u8>,
 }
 
@@ -39,9 +48,39 @@ struct Border {
     color: Color,
 }
 
+impl Button {
+    fn new(rect: Rect, color: Color, border: Border) -> Button {
+        Button {
+            rect,
+            color,
+            border,
+        }
+    }
+    
+    fn draw(&self, canvas: &mut Canvas) {
+        canvas.fill_rect(self.rect, self.color);
+        canvas.draw_border(self.rect, self.border);
+    }
+
+    fn clear(&mut self, canvas: &mut Canvas) {
+        self.color = canvas.background;
+        self.border.color = canvas.background;
+        self.draw(canvas);
+    }
+}
+
+impl Rect {
+    fn contains(&self, point: (usize, usize)) -> bool {
+        point.0 >= self.left &&
+        point.0 < self.left + self.width &&
+        point.1 >= self.top &&
+        point.1 < self.top + self.height
+    }
+}
+
 impl Canvas {
     fn new(width: usize, height: usize) -> Self {
-        Self { width, height, bytes: vec![0; width * height * BYTES_PER_PIXEL] }
+        Self { width, height, background: Color::BACKGROUND, bytes: vec![0; width * height * BYTES_PER_PIXEL] }
     }
 
     fn set_pixel(&mut self, column: usize, row: usize, color: Color) {
@@ -88,14 +127,14 @@ impl Canvas {
         self.fill_rect(horizontal, border.color);
     }
     
-    fn clear(&mut self, color: Color) {
+    fn clear(&mut self) {
         let canvas = Rect {
             left: 0,
             top: 0,
             width: self.width,
             height: self.height 
         };
-        self.fill_rect(canvas, color)
+        self.fill_rect(canvas, self.background)
     }
 
     fn save(&self, path: &str) {
@@ -109,15 +148,18 @@ impl Canvas {
 
 fn main() {
     let mut canvas = Canvas::new(200, 120);
-    canvas.clear(Color::DARK_GREY);
+    canvas.clear();
 
     // Canvas width: rect left + rect width
     // Canvas height: rect top + rect height
-    let button = Rect { left: 20, top: 20, width: 160, height: 80 };
-    canvas.fill_rect(button, Color::ORANGE);
-    
+    let rect = Rect { left: 20, top: 20, width: 160, height: 80 };    
     let border = Border { thickness: 5, color: Color::RED };
-    canvas.draw_border(button, border);
-
+    let mut button = Button::new(rect, Color::ORANGE, border);
+    button.draw(&mut canvas);
+    
     canvas.save("out.ppm");
+
+    button.clear(&mut canvas);
+
+    canvas.save("out2.ppm");
 }
