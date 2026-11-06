@@ -60,7 +60,7 @@ struct Point {
 enum ButtonState {
     Normal,
     Hovered,
-    Pressed,
+    Pressing,
 }
 
 #[derive(Debug, Clone)]
@@ -97,10 +97,25 @@ impl Button {
         // So we always have a default color to use
         // without hardcoding a default color here when 
         // the state is normal
+        // let mut color = self.color;
         let color = match self.state {
-            ButtonState::Normal => self.color,
-            ButtonState::Hovered => Color::GREEN,
-            ButtonState::Pressed => Color::RED
+            // We dont have a pressed state here because that's
+            // not meant to be a mouse state; it's an action driver
+            // that does something the moment it is registered, we
+            // dont store/compare it here; it happens at the detection
+            // site
+            ButtonState::Normal => {
+
+                self.color
+            },
+            ButtonState::Hovered => {
+
+                Color::GREEN
+            },
+            ButtonState::Pressing => {
+                
+                Color::BLUE
+            }
         };
         canvas.fill_rect(self.rect, color);
         canvas.draw_border(self.rect, self.border);
@@ -133,13 +148,12 @@ impl Button {
         self.rect.contains(point)
     }
     
-    fn get_state(contains: bool, left_is_down: bool) -> ButtonState {
-        if contains && left_is_down {
-            ButtonState::Pressed
-        } else if contains {
-            ButtonState::Hovered
-        } else {
-            ButtonState::Normal
+    fn get_state(contains: bool, left_is_down: bool, was_down: bool) -> ButtonState {
+        match (contains, left_is_down, was_down) {
+            (true, true, _) => ButtonState::Pressing,
+            (true, false, false) => ButtonState::Hovered,
+            
+            _ => ButtonState::Normal
         }
     }
 }
@@ -173,7 +187,6 @@ impl Canvas {
     // It uses an existing buffer instead of allocating a new
     // Vec everytime we need u32 byte pairs to update the screen
     fn to_u32_pixels(&self, buffer: &mut Vec<u32>) {
-        // let mut pixels: Vec<u32> = Vec::new();
         buffer.clear();
         for bytes in self.bytes.chunks(BYTES_PER_PIXEL) {
             let red = bytes[0] as u32;
@@ -184,7 +197,6 @@ impl Canvas {
             buffer.push(byte)
             
         }
-        // pixels.into_boxed_slice()
     }
     
     fn set_pixel(&mut self, column: usize, row: usize, color: Color) {
@@ -272,6 +284,7 @@ fn main() {
     window.set_target_fps(FPS);
 
     let mut buffer: Vec<u32> = Vec::new();
+    let mut was_down: bool = false;
     
     while window.is_open() {       
         canvas.clear(); 
@@ -294,8 +307,13 @@ fn main() {
             false
         };
 
-        button.state = Button::get_state(contains, left_is_down);
+        if contains && !left_is_down && was_down {
+            println!("You just clicked!");
+        }
+        
+        button.state = Button::get_state(contains, left_is_down, was_down);
         button.draw(&mut canvas);
+        was_down = left_is_down;
         
         canvas.to_u32_pixels(&mut buffer);
         window.update_with_buffer(&buffer, canvas.width, canvas.height).unwrap();
