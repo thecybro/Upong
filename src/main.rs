@@ -2,12 +2,27 @@
 use std::fs::File;
 use std::io::Write;
 
+use std::time::Instant;
+
 use minifb::{Window, WindowOptions};
-use minifb::{MouseButton, MouseMode};
+// use minifb::{MouseButton, MouseMode};
+use minifb::{Key, KeyRepeat};
+
+const NAME: &str = "UPong";
 
 const BYTES_PER_PIXEL: usize = 3;
 const MAX_COLOR_VALUE: usize = 255;
+
 const FPS: usize = 60;
+
+const PADDLE_SPEED: f32 = 300.0;
+
+const BALL_SIZE: f32 = 15.0;
+const BALL_SPEED_X: f32 = 200.0;
+const BALL_SPEED_Y: f32 = 200.0;
+
+const CANVAS_WIDTH: usize = 720;
+const CANVAS_HEIGHT: usize = 480;
 
 #[derive(Debug, Clone, Copy)]
 struct Color {
@@ -29,17 +44,21 @@ impl Color {
     
     const ORANGE: Color = Color { red: 255, green: 128, blue: 0 };
     const LIGHT_ORANGE: Color = Color { red: 255, green: 180, blue: 80 };
+
+    const WHITE: Color = Color { red: 255, green: 255, blue: 255 };
+
+    const BLACK: Color = Color { red: 0, green: 0, blue: 0 };
     
     const DARK_GREY: Color = Color { red: 32, green: 32, blue: 32 };
-    const BACKGROUND: Color = Color::DARK_GREY;
+    const BACKGROUND: Color = Color::BLACK;
 }
 
 #[derive(Copy, Clone)]
 struct Rect {
-    left: usize,
-    top: usize,
-    width: usize,
-    height: usize
+    left: f32,
+    top: f32,
+    width: f32,
+    height: f32
 }
 
 #[derive(Copy, Clone)]
@@ -63,6 +82,24 @@ enum ButtonState {
     Pressing,
 }
 
+#[derive(Debug)]
+struct Paddle {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    speed: f32, // PPS (pixels per sec)
+}
+
+#[derive(Debug)]
+struct Ball {
+    x: f32,
+    y: f32,
+    size: f32,
+    velocity_x: f32, // PPS (pixels per sec)
+    velocity_y: f32
+}
+
 #[derive(Debug, Clone)]
 struct Canvas {
     width: usize,
@@ -73,10 +110,11 @@ struct Canvas {
 
 #[derive(Copy, Clone)]
 struct Border {
-    thickness: usize,
+    thickness: f32,
     color: Color,
 }
 
+#[allow(unused)]
 impl Button {
     const DEFAULT_COLOR: Color = Color::ORANGE;
 
@@ -125,8 +163,8 @@ impl Button {
         let rect = self.rect;
         let t = self.border.thickness;
 
-        let left = rect.left.saturating_sub(t);
-        let top = rect.top.saturating_sub(t);
+        let left = (rect.left - t).max(0.0);
+        let top = (rect.top - t).max(0.0);
 
         let right = rect.left + rect.width + t;
         let bottom = rect.top + rect.height + t;
@@ -174,6 +212,96 @@ impl Rect {
     }
 }
 
+impl Paddle {
+    fn to_rect(&self) -> Rect {
+        Rect {
+            left: self.x,
+            top: self.y,
+            width: self.width,
+            height: self.height,
+        }
+    }
+
+    fn update(&mut self, dt: f32, direction: f32) {
+        self.y += direction * self.speed * dt;
+        self.y = self.y.clamp(0.0, CANVAS_HEIGHT as f32 - self.height);
+    }
+    
+    fn draw(&self, canvas: &mut Canvas, color: Color) {
+        canvas.fill_rect(
+            Self::to_rect(&self),
+            color
+        );
+    }
+}
+
+impl Ball {
+    fn to_rect(&self) -> Rect {
+        let x = self.x;
+        let y = self.y;
+        Rect {
+            left: x,
+            top: y,
+            width: self.size,
+            height: self.size,
+        }
+    }
+
+    fn update(&mut self, dt: f32, paddle: &Paddle) {
+        self.x += dt * self.velocity_x;        
+        self.y += dt * self.velocity_y;
+
+        let bottom_limit = CANVAS_HEIGHT as f32 - self.size;
+        let right_limit = CANVAS_WIDTH as f32 - self.size;
+        
+        if self.y < 0.0 {
+            self.y = 0.0;
+            self.velocity_y = -self.velocity_y
+        }
+
+        if self.x < 0.0 {
+            self.x = 0.0;
+            self.velocity_x = -self.velocity_x;
+        }
+
+        if self.hit_paddle(paddle) {
+            println!("Hit the paddle!");
+            self.velocity_x = -self.velocity_x
+        }
+        
+        if self.y > bottom_limit {
+            println!("Hit the bottom!");
+            self.y = bottom_limit;
+            self.velocity_y = -self.velocity_y;
+        }
+
+        if self.x > right_limit {
+            println!("Hit the right!");
+            self.x = right_limit;
+            self.velocity_x = -self.velocity_x;
+        }
+    }
+
+    fn hit_paddle(&self, paddle: &Paddle) -> bool {
+        let x = self.x as f64;
+        let y = self.y as f64;
+
+        x >= paddle.x as f64 &&
+        x < (paddle.x + paddle.width) as f64 &&
+
+        y >= paddle.y as f64 &&
+        y < (paddle.y + paddle.height) as f64
+    }
+    
+    fn draw(&self, canvas: &mut Canvas, color: Color) {
+        canvas.fill_rect(
+            Self::to_rect(&self),
+            color
+        );
+    }
+}
+
+#[allow(unused)]
 impl Canvas {
     fn new(width: usize, height: usize) -> Self {
         Self { 
@@ -212,19 +340,27 @@ impl Canvas {
     }
 
     fn fill_rect(&mut self, rect: Rect, color: Color) {
-        for row in rect.top..rect.top + rect.height {
-            for column in rect.left..rect.left + rect.width {
+        let left = rect.left as usize;
+        let top = rect.top as usize;
+
+        let height = rect.height as usize;
+        let width = rect.width as usize;
+        
+        for row in top..top + height {
+            for column in left..left + width {
                 self.set_pixel(column, row, color);
             }
         }
     }
 
     fn draw_border(&mut self, rect: Rect, border: Border) {
+        let thickness = border.thickness;
+        
         let mut vertical = Rect {
-            left: rect.left.saturating_sub(border.thickness),
-            top: rect.top.saturating_sub(border.thickness),
-            width: border.thickness,
-            height: rect.height + 2 * border.thickness,
+            left: (rect.left - thickness).clamp(0.0, CANVAS_WIDTH as f32 - thickness),
+            top: (rect.top - thickness).clamp(0.0, CANVAS_HEIGHT as f32 - thickness ),
+            width: thickness,
+            height: rect.height + 2.0 * thickness,
         };
         self.fill_rect(vertical, border.color);
 
@@ -233,7 +369,7 @@ impl Canvas {
         
         let mut horizontal = Rect {
             left: rect.left,
-            top: rect.top.saturating_sub(border.thickness),
+            top: (rect.top - thickness).clamp(0.0, CANVAS_HEIGHT as f32 - thickness),
             width: rect.width,
             height: border.thickness
         };
@@ -245,10 +381,10 @@ impl Canvas {
     
     fn clear(&mut self) {
         let canvas = Rect {
-            left: 0,
-            top: 0,
-            width: self.width,
-            height: self.height 
+            left: 0.0,
+            top: 0.0,
+            width: self.width as f32,
+            height: self.height as f32
         };
         self.fill_rect(canvas, self.background_color)
     }
@@ -264,18 +400,27 @@ impl Canvas {
 }
 
 fn main() {
-    let mut canvas = Canvas::new(200, 120);
+    let mut canvas = Canvas::new(CANVAS_WIDTH, CANVAS_HEIGHT);
     canvas.clear();
 
-    // Canvas width: rect left + rect width
-    // Canvas height: rect top + rect height
-    let rect = Rect { left: 20, top: 20, width: 160, height: 80 };    
-    let border = Border { thickness: 5, color: Color::RED };
-    
-    let mut button = Button::new(rect, Button::DEFAULT_COLOR, border);
+    let mut paddle = Paddle { 
+        x: 0.0,
+        y: (canvas.height / 2) as f32,
+        width: 15.0,
+        height: canvas.height as f32/ 4.5,
+        speed: PADDLE_SPEED
+    };
+
+    let mut ball = Ball {
+        x: canvas.width as f32 / 2.0,
+        y: canvas.height as f32 / 2.0,
+        size: BALL_SIZE,
+        velocity_x: BALL_SPEED_X,
+        velocity_y: BALL_SPEED_Y
+    };
     
     let mut window = Window::new(
-        "Ugame",
+        NAME,
         canvas.width,
         canvas.height,
         WindowOptions::default()
@@ -284,38 +429,36 @@ fn main() {
     window.set_target_fps(FPS);
 
     let mut buffer: Vec<u32> = Vec::new();
-    let mut was_down: bool = false;
+
+    let mut last_frame = Instant::now();
+
+    let mut has_started = false;
     
-    while window.is_open() {       
+    while window.is_open() {     
         canvas.clear(); 
-        // Draw into canvas here...
 
-        let left_is_down = window.get_mouse_down(MouseButton::Left);
-        
-        let contains = if let Some((mouse_x, mouse_y)) = window.get_mouse_pos(MouseMode::Discard) {
-            // let column = mouse_x as usize;
-            // let row = mouse_y as usize;
+        let now = Instant::now();
+        let dt = now.duration_since(last_frame).as_secs_f32();
+        last_frame = now;
 
-            button.contains(&Point {
-                x: mouse_x,
-                y: mouse_y
-            })
-            
-            // println!("Mouse is at column {column} and row {row}")
-        } else {
-            // println!("Mouse is outside the window")
-            false
-        };
-
-        if contains && !left_is_down && was_down {
-            println!("You just clicked!");
+        if has_started {
+            ball.update(dt, &paddle);
+            ball.draw(&mut canvas, Color::WHITE);
         }
+
+        let mut paddle_direction = 0.0;
         
-        button.state = Button::get_state(contains, left_is_down, was_down);
-        button.draw(&mut canvas);
-        was_down = left_is_down;
+        if window.is_key_down(Key::Up) {paddle_direction -= 1.0};
+        if window.is_key_down(Key::Down) {paddle_direction += 1.0};
+
+        paddle.update(dt, paddle_direction);
+        paddle.draw(&mut canvas, Color::WHITE);
         
         canvas.to_u32_pixels(&mut buffer);
         window.update_with_buffer(&buffer, canvas.width, canvas.height).unwrap();
+
+        if !has_started && window.is_key_pressed(Key::Enter, KeyRepeat::No) {
+            has_started = true;
+        }
     }
 }
