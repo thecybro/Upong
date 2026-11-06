@@ -16,9 +16,20 @@ struct Color {
     blue: u8,
 }
 
+#[allow(unused)]
 impl Color {
     const RED: Color = Color { red: 255, green: 0, blue: 0 };
+    const LIGHT_RED: Color = Color { red: 255, green: 127, blue: 127 };
+    
+    const GREEN: Color = Color { red: 0, green: 255, blue: 0 };
+    const LIGHT_GREEN: Color = Color { red: 144, green: 238, blue: 144 };
+    
+    const BLUE: Color = Color { red: 0, green: 0, blue: 255 };
+    const LIGHT_BLUE: Color = Color { red: 173, green: 216, blue: 230 };
+    
     const ORANGE: Color = Color { red: 255, green: 128, blue: 0 };
+    const LIGHT_ORANGE: Color = Color { red: 255, green: 180, blue: 80 };
+    
     const DARK_GREY: Color = Color { red: 32, green: 32, blue: 32 };
     const BACKGROUND: Color = Color::DARK_GREY;
 }
@@ -36,19 +47,27 @@ struct Button {
     rect: Rect,
     color: Color,
     border: Border,
+    state: ButtonState,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone)]
 struct Point {
     x: f32,
     y: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ButtonState {
+    Normal,
+    Hovered,
+    Pressed,
 }
 
 #[derive(Debug, Clone)]
 struct Canvas {
     width: usize,
     height: usize,
-    background: Color,
+    background_color: Color,
     bytes: Vec<u8>,
 }
 
@@ -59,70 +78,113 @@ struct Border {
 }
 
 impl Button {
+    const DEFAULT_COLOR: Color = Color::ORANGE;
+
     fn new(rect: Rect, color: Color, border: Border) -> Button {
         Button {
             rect,
             color,
             border,
+            state: ButtonState::Normal,
         }
     }
     
     fn draw(&self, canvas: &mut Canvas) {
-        canvas.fill_rect(self.rect, self.color);
+        // We take the current color of the button
+        // and draw with it because no method changes
+        // that color once the button is initialized
+        // with one.
+        // So we always have a default color to use
+        // without hardcoding a default color here when 
+        // the state is normal
+        let color = match self.state {
+            ButtonState::Normal => self.color,
+            ButtonState::Hovered => Color::GREEN,
+            ButtonState::Pressed => Color::RED
+        };
+        canvas.fill_rect(self.rect, color);
         canvas.draw_border(self.rect, self.border);
     }
 
-    fn contains(&self, point: &Point) -> bool {
+    fn with_border(&self) -> Rect {
         let rect = self.rect;
-        let border_thickness = self.border.thickness;
-        
-        let left = rect.left;
-        let top = rect.top - border_thickness;
+        let t = self.border.thickness;
 
-        let x = point.x as usize;
-        let y = point.y as usize;
+        let left = rect.left.saturating_sub(t);
+        let top = rect.top.saturating_sub(t);
+
+        let right = rect.left + rect.width + t;
+        let bottom = rect.top + rect.height + t;
         
-        x >= left &&
-        x < left + rect.width  &&
-        y >= top &&
-        y < top + rect.height
+        Rect {
+            left,
+            top,
+            width: right - left,
+            height: bottom - top,
+        }
+    }
+
+    fn contains(&self, point: &Point) -> bool {
+        self.with_border().contains(point)
+    }
+
+    #[allow(unused)]
+    fn contains_with_no_border(&self, point: &Point) -> bool {
+        self.rect.contains(point)
     }
     
-    #[allow(unused)]
-    fn clear(&mut self, canvas: &mut Canvas) {
-        self.color = canvas.background;
-        self.border.color = canvas.background;
-        self.draw(canvas);
+    fn get_state(contains: bool, left_is_down: bool) -> ButtonState {
+        if contains && left_is_down {
+            ButtonState::Pressed
+        } else if contains {
+            ButtonState::Hovered
+        } else {
+            ButtonState::Normal
+        }
     }
 }
 
 impl Rect {
-    #[allow(unused)]
-    fn contains(&self, point: (usize, usize)) -> bool {
-        point.0 >= self.left &&
-        point.0 < self.left + self.width &&
-        point.1 >= self.top &&
-        point.1 < self.top + self.height
+    fn contains(&self, point: &Point) -> bool {
+        // We convert values to f64 so we can safely compare
+        // f32 x/y points to our usize coordinates without
+        // losing much/any precision
+        let x = point.x as f64;
+        let y = point.y as f64;
+        
+        x >= self.left as f64 &&
+        x < (self.left + self.width) as f64 &&
+        
+        y >= self.top as f64 &&
+        y < (self.top + self.height) as f64
     }
 }
 
 impl Canvas {
     fn new(width: usize, height: usize) -> Self {
-        Self { width, height, background: Color::BACKGROUND, bytes: vec![0; width * height * BYTES_PER_PIXEL] }
+        Self { 
+            width,
+            height,
+            background_color: Color::BACKGROUND, 
+            bytes: vec![0; width * height * BYTES_PER_PIXEL] 
+        }
     }
 
-    fn to_u32_pixels(&self) -> Vec<u32> {
-        let mut pixels: Vec<u32> = Vec::new();
+    // It uses an existing buffer instead of allocating a new
+    // Vec everytime we need u32 byte pairs to update the screen
+    fn to_u32_pixels(&self, buffer: &mut Vec<u32>) {
+        // let mut pixels: Vec<u32> = Vec::new();
+        buffer.clear();
         for bytes in self.bytes.chunks(BYTES_PER_PIXEL) {
             let red = bytes[0] as u32;
             let green = bytes[1] as u32;
             let blue = bytes[2] as u32;
 
             let byte = red << 16 | green << 8 | blue;
-            pixels.push(byte)
+            buffer.push(byte)
             
         }
-        pixels
+        // pixels.into_boxed_slice()
     }
     
     fn set_pixel(&mut self, column: usize, row: usize, color: Color) {
@@ -176,7 +238,7 @@ impl Canvas {
             width: self.width,
             height: self.height 
         };
-        self.fill_rect(canvas, self.background)
+        self.fill_rect(canvas, self.background_color)
     }
 
     #[allow(unused)]
@@ -193,22 +255,13 @@ fn main() {
     let mut canvas = Canvas::new(200, 120);
     canvas.clear();
 
-    // let pixels = canvas.to_u32_pixels()[0];
-    // println!("{pixels:#?}");
-    
     // Canvas width: rect left + rect width
     // Canvas height: rect top + rect height
     let rect = Rect { left: 20, top: 20, width: 160, height: 80 };    
     let border = Border { thickness: 5, color: Color::RED };
-    let button = Button::new(rect, Color::ORANGE, border);
-    button.draw(&mut canvas);
     
-    // canvas.save("out.ppm");
-
-    // button.clear(&mut canvas);
-
-    // canvas.save("out2.ppm");
-
+    let mut button = Button::new(rect, Button::DEFAULT_COLOR, border);
+    
     let mut window = Window::new(
         "Ugame",
         canvas.width,
@@ -218,32 +271,33 @@ fn main() {
 
     window.set_target_fps(FPS);
 
-    while window.is_open() {        
+    let mut buffer: Vec<u32> = Vec::new();
+    
+    while window.is_open() {       
+        canvas.clear(); 
         // Draw into canvas here...
 
         let left_is_down = window.get_mouse_down(MouseButton::Left);
+        
+        let contains = if let Some((mouse_x, mouse_y)) = window.get_mouse_pos(MouseMode::Discard) {
+            // let column = mouse_x as usize;
+            // let row = mouse_y as usize;
 
-        if let Some((mouse_x, mouse_y)) = window.get_mouse_pos(MouseMode::Discard) {
-            let column = mouse_x as usize;
-            let row = mouse_y as usize;
-
-            let point = Point {
+            button.contains(&Point {
                 x: mouse_x,
                 y: mouse_y
-            };
+            })
             
-            if button.contains(&point) {
-                if left_is_down {
-                    println!("You clicked the button!")
-                }
-            }
-            
-            println!("Mouse is at column {column} and row {row}")
+            // println!("Mouse is at column {column} and row {row}")
         } else {
-            println!("Mouse is outside the window")
-        }
+            // println!("Mouse is outside the window")
+            false
+        };
+
+        button.state = Button::get_state(contains, left_is_down);
+        button.draw(&mut canvas);
         
-        let pixels = canvas.to_u32_pixels();
-        window.update_with_buffer(&pixels, canvas.width, canvas.height).unwrap();
+        canvas.to_u32_pixels(&mut buffer);
+        window.update_with_buffer(&buffer, canvas.width, canvas.height).unwrap();
     }
 }
