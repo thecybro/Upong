@@ -198,17 +198,14 @@ impl Button {
 
 impl Rect {
     fn contains(&self, point: &Point) -> bool {
-        // We convert values to f64 so we can safely compare
-        // f32 x/y points to our usize coordinates without
-        // losing much/any precision
-        let x = point.x as f64;
-        let y = point.y as f64;
+        let x = point.x;
+        let y = point.y;
         
-        x >= self.left as f64 &&
-        x < (self.left + self.width) as f64 &&
+        x >= self.left &&
+        x < (self.left + self.width) &&
         
-        y >= self.top as f64 &&
-        y < (self.top + self.height) as f64
+        y >= self.top &&
+        y < (self.top + self.height)
     }
 }
 
@@ -266,31 +263,32 @@ impl Ball {
 
         if self.hit_paddle(paddle) {
             println!("Hit the paddle!");
-            self.velocity_x = -self.velocity_x
+
+            println!("Ball: {self:#?}\nPaddle: {paddle:#?}");
+            
+            self.x = paddle.x + paddle.width;
+            self.velocity_x = self.velocity_x.abs();
         }
         
         if self.y > bottom_limit {
-            println!("Hit the bottom!");
+            // println!("Hit the bottom!");
             self.y = bottom_limit;
             self.velocity_y = -self.velocity_y;
         }
 
         if self.x > right_limit {
-            println!("Hit the right!");
+            // println!("Hit the right!");
             self.x = right_limit;
             self.velocity_x = -self.velocity_x;
         }
     }
 
     fn hit_paddle(&self, paddle: &Paddle) -> bool {
-        let x = self.x as f64;
-        let y = self.y as f64;
+        self.x < paddle.x + paddle.width &&
+        self.x + self.size >= paddle.x &&
 
-        x >= paddle.x as f64 &&
-        x < (paddle.x + paddle.width) as f64 &&
-
-        y >= paddle.y as f64 &&
-        y < (paddle.y + paddle.height) as f64
+        self.y < paddle.y + paddle.height &&
+        self.y + self.size >= paddle.y
     }
     
     fn draw(&self, canvas: &mut Canvas, color: Color) {
