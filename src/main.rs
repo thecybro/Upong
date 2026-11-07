@@ -17,7 +17,7 @@ const FPS: usize = 60;
 
 const PADDLE_SPEED: f32 = 300.0;
 
-const BALL_SIZE: f32 = 15.0;
+const BALL_SIDE: f32 = 15.0; // single ball side just means width = height aka square
 const BALL_SPEED_X: f32 = 200.0;
 const BALL_SPEED_Y: f32 = 200.0;
 
@@ -55,8 +55,8 @@ impl Color {
 
 #[derive(Copy, Clone)]
 struct Rect {
-    left: f32,
-    top: f32,
+    x: f32,
+    y: f32,
     width: f32,
     height: f32
 }
@@ -95,7 +95,7 @@ struct Paddle {
 struct Ball {
     x: f32,
     y: f32,
-    size: f32,
+    side: f32, // single side just means width & height are same
     velocity_x: f32, // PPS (pixels per sec)
     velocity_y: f32
 }
@@ -112,6 +112,30 @@ struct Canvas {
 struct Border {
     thickness: f32,
     color: Color,
+}
+
+fn bigger(value1: f32, value2: f32) -> f32 {
+    value1.max(value2)
+}
+
+fn smaller(value1: f32, value2: f32) -> f32 {
+    value1.min(value2)
+}
+
+fn in_range(value: f32, min: f32, max: f32) -> bool {
+    /* This will break if max is less than min;
+       So we check based on which one is less/more
+       regardless of what was passed here
+    */
+    // (value >= min) && (value <= max)
+    
+    (value >= smaller(min, max)) && (value <= bigger(min, max))
+}
+
+fn ranges_overlap(min1: f32, max1: f32, min2: f32, max2: f32) -> bool {
+    bigger(min1, max1) >= smaller(min2, max2)
+    && 
+    smaller(min1, max1) <= bigger(min2, max2)
 }
 
 #[allow(unused)]
@@ -163,17 +187,17 @@ impl Button {
         let rect = self.rect;
         let t = self.border.thickness;
 
-        let left = (rect.left - t).max(0.0);
-        let top = (rect.top - t).max(0.0);
+        let x = (rect.x - t).max(0.0);
+        let y = (rect.y - t).max(0.0);
 
-        let right = rect.left + rect.width + t;
-        let bottom = rect.top + rect.height + t;
+        let right = rect.x + rect.width + t;
+        let bottom = rect.y + rect.height + t;
         
         Rect {
-            left,
-            top,
-            width: right - left,
-            height: bottom - top,
+            x,
+            y,
+            width: right - x,
+            height: bottom - y,
         }
     }
 
@@ -197,23 +221,18 @@ impl Button {
 }
 
 impl Rect {
-    fn contains(&self, point: &Point) -> bool {
-        let x = point.x;
-        let y = point.y;
-        
-        x >= self.left &&
-        x < (self.left + self.width) &&
-        
-        y >= self.top &&
-        y < (self.top + self.height)
+    fn contains(&self, point: &Point) -> bool {        
+        in_range(point.x, self.x, self.x + self.width)
+        &&
+        in_range(point.y, self.y, self.y + self.height)
     }
 }
 
 impl Paddle {
     fn to_rect(&self) -> Rect {
         Rect {
-            left: self.x,
-            top: self.y,
+            x: self.x,
+            y: self.y,
             width: self.width,
             height: self.height,
         }
@@ -222,6 +241,18 @@ impl Paddle {
     fn update(&mut self, dt: f32, direction: f32) {
         self.y += direction * self.speed * dt;
         self.y = self.y.clamp(0.0, CANVAS_HEIGHT as f32 - self.height);
+    }
+
+    fn hit_ball(&self, ball: &Ball) -> bool {
+        ranges_overlap(
+            ball.x, ball.x + ball.side,
+            self.x, self.x + self.width
+        )
+        &&
+        ranges_overlap(
+            ball.y, ball.y + ball.side,
+            self.y, self.y + self.height
+        )
     }
     
     fn draw(&self, canvas: &mut Canvas, color: Color) {
@@ -234,13 +265,11 @@ impl Paddle {
 
 impl Ball {
     fn to_rect(&self) -> Rect {
-        let x = self.x;
-        let y = self.y;
         Rect {
-            left: x,
-            top: y,
-            width: self.size,
-            height: self.size,
+            x: self.x,
+            y: self.y,
+            width: self.side,
+            height: self.side,
         }
     }
 
@@ -248,8 +277,8 @@ impl Ball {
         self.x += dt * self.velocity_x;        
         self.y += dt * self.velocity_y;
 
-        let bottom_limit = CANVAS_HEIGHT as f32 - self.size;
-        let right_limit = CANVAS_WIDTH as f32 - self.size;
+        let bottom_limit = CANVAS_HEIGHT as f32 - self.side;
+        let right_limit = CANVAS_WIDTH as f32 - self.side;
         
         if self.y < 0.0 {
             self.y = 0.0;
@@ -264,7 +293,7 @@ impl Ball {
         if self.hit_paddle(paddle) {
             println!("Hit the paddle!");
 
-            println!("Ball: {self:#?}\nPaddle: {paddle:#?}");
+            // println!("Ball: {self:#?}\nPaddle: {paddle:#?}");
             
             self.x = paddle.x + paddle.width;
             self.velocity_x = self.velocity_x.abs();
@@ -284,11 +313,15 @@ impl Ball {
     }
 
     fn hit_paddle(&self, paddle: &Paddle) -> bool {
-        self.x < paddle.x + paddle.width &&
-        self.x + self.size >= paddle.x &&
-
-        self.y < paddle.y + paddle.height &&
-        self.y + self.size >= paddle.y
+        ranges_overlap(
+            self.x, self.x + self.side,
+            paddle.x, paddle.x + paddle.width
+        )
+        &&
+        ranges_overlap(
+            self.y, self.y + self.side,
+            paddle.y, paddle.y + paddle.height
+        )
     }
     
     fn draw(&self, canvas: &mut Canvas, color: Color) {
@@ -338,14 +371,14 @@ impl Canvas {
     }
 
     fn fill_rect(&mut self, rect: Rect, color: Color) {
-        let left = rect.left as usize;
-        let top = rect.top as usize;
+        let x = rect.x as usize;
+        let y = rect.y as usize;
 
         let height = rect.height as usize;
         let width = rect.width as usize;
         
-        for row in top..top + height {
-            for column in left..left + width {
+        for row in y..y + height {
+            for column in x..x + width {
                 self.set_pixel(column, row, color);
             }
         }
@@ -355,32 +388,32 @@ impl Canvas {
         let thickness = border.thickness;
         
         let mut vertical = Rect {
-            left: (rect.left - thickness).clamp(0.0, CANVAS_WIDTH as f32 - thickness),
-            top: (rect.top - thickness).clamp(0.0, CANVAS_HEIGHT as f32 - thickness ),
+            x: (rect.x - thickness).clamp(0.0, CANVAS_WIDTH as f32 - thickness),
+            y: (rect.y - thickness).clamp(0.0, CANVAS_HEIGHT as f32 - thickness ),
             width: thickness,
             height: rect.height + 2.0 * thickness,
         };
         self.fill_rect(vertical, border.color);
 
-        vertical.left = rect.left + rect.width;
+        vertical.x = rect.x + rect.width;
         self.fill_rect(vertical, border.color);
         
         let mut horizontal = Rect {
-            left: rect.left,
-            top: (rect.top - thickness).clamp(0.0, CANVAS_HEIGHT as f32 - thickness),
+            x: rect.x,
+            y: (rect.y - thickness).clamp(0.0, CANVAS_HEIGHT as f32 - thickness),
             width: rect.width,
             height: border.thickness
         };
         self.fill_rect(horizontal, border.color);
 
-        horizontal.top = rect.top + rect.height;
+        horizontal.y = rect.y + rect.height;
         self.fill_rect(horizontal, border.color);
     }
     
     fn clear(&mut self) {
         let canvas = Rect {
-            left: 0.0,
-            top: 0.0,
+            x: 0.0,
+            y: 0.0,
             width: self.width as f32,
             height: self.height as f32
         };
@@ -412,7 +445,7 @@ fn main() {
     let mut ball = Ball {
         x: canvas.width as f32 / 2.0,
         y: canvas.height as f32 / 2.0,
-        size: BALL_SIZE,
+        side: BALL_SIDE,
         velocity_x: BALL_SPEED_X,
         velocity_y: BALL_SPEED_Y
     };
@@ -449,6 +482,10 @@ fn main() {
         if window.is_key_down(Key::Up) {paddle_direction -= 1.0};
         if window.is_key_down(Key::Down) {paddle_direction += 1.0};
 
+        if paddle.hit_ball(&ball) {
+            println!("Paddle hit the ball!")
+        }
+        
         paddle.update(dt, paddle_direction);
         paddle.draw(&mut canvas, Color::WHITE);
         
