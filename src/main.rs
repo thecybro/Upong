@@ -125,7 +125,8 @@ fn main() {
         height: canvas.height as f32/ 4.5,
         speed: PADDLE_SPEED
     };
-
+    paddle.set_left();
+    
     let mut ball = Ball {
         x: canvas.width as f32 / 2.0,
         y: canvas.height as f32 / 2.0,
@@ -166,7 +167,7 @@ fn main() {
         if window.is_key_down(Key::Up) {paddle_direction -= 1.0};
         if window.is_key_down(Key::Down) {paddle_direction += 1.0};
         
-        paddle.update(dt, paddle_direction, &canvas, &ball);
+        paddle.update(dt, paddle_direction, &canvas);
         paddle.draw(&mut canvas, Color::WHITE);
         
         canvas.to_u32_pixels(&mut buffer);

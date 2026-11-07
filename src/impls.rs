@@ -109,6 +109,10 @@ pub fn rects_overlap(rect1: Rect, rect2: Rect) -> bool {
 }
 
 impl Paddle {
+    fn right(&self, canvas: &Canvas) -> f32 {
+        canvas.width as f32 - self.width
+    }
+    
     pub fn to_rect(&self) -> Rect {
         Rect {
             x: self.x,
@@ -117,12 +121,28 @@ impl Paddle {
             height: self.height
         }
     }
+
+    pub fn set_left(&mut self) {
+        self.x = 0.0;
+    }
+
+    pub fn is_left(&self) -> bool {
+        self.x == 0.0
+    }
+
+    pub fn set_right(&mut self, canvas: &mut Canvas) {
+        self.x = self.right(canvas);
+    }
+
+    pub fn is_right(&self, canvas: &Canvas) -> bool {
+        self.x == self.right(canvas)
+    }
     
     pub fn hit_ball(&self, ball: &Ball) -> bool {
         rects_overlap(self.to_rect(), ball.to_rect())
     }
 
-    pub fn update(&mut self, dt: f32, direction: f32, canvas: &Canvas, ball: &Ball) {
+    pub fn update(&mut self, dt: f32, direction: f32, canvas: &Canvas) {
         self.y += direction * dt * self.speed;
         self.y = self.y.clamp(0.0, canvas.height as f32 - self.height);
     }
@@ -162,9 +182,14 @@ impl Ball {
 
         if self.hit_paddle(paddle) {
             println!("Hit the paddle!");
-            
-            self.x = paddle.x + paddle.width;
-            self.velocity_x = self.velocity_x.abs()
+
+            if paddle.is_right(canvas) {
+                self.x = paddle.x - self.side;
+            } else {
+                self.x = paddle.x + paddle.width;
+            }
+
+            self.velocity_x =- self.velocity_x;
         }
 
         let bottom_limit = canvas.height as f32 - self.side;
