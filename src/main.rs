@@ -138,6 +138,18 @@ fn ranges_overlap(min1: f32, max1: f32, min2: f32, max2: f32) -> bool {
     smaller(min1, max1) <= bigger(min2, max2)
 }
 
+fn rects_overlap(rect1: Rect, rect2: Rect) -> bool {
+    ranges_overlap(
+        rect1.x, rect1.x + rect1.width,
+        rect2.x, rect2.x + rect2.width
+    )
+    &&
+    ranges_overlap(
+        rect1.y, rect1.y + rect1.height,
+        rect2.y, rect2.y + rect2.height
+    )
+}
+
 #[allow(unused)]
 impl Button {
     const DEFAULT_COLOR: Color = Color::ORANGE;
@@ -244,15 +256,7 @@ impl Paddle {
     }
 
     fn hit_ball(&self, ball: &Ball) -> bool {
-        ranges_overlap(
-            ball.x, ball.x + ball.side,
-            self.x, self.x + self.width
-        )
-        &&
-        ranges_overlap(
-            ball.y, ball.y + ball.side,
-            self.y, self.y + self.height
-        )
+        rects_overlap(self.to_rect(), ball.to_rect())
     }
     
     fn draw(&self, canvas: &mut Canvas, color: Color) {
@@ -313,15 +317,7 @@ impl Ball {
     }
 
     fn hit_paddle(&self, paddle: &Paddle) -> bool {
-        ranges_overlap(
-            self.x, self.x + self.side,
-            paddle.x, paddle.x + paddle.width
-        )
-        &&
-        ranges_overlap(
-            self.y, self.y + self.side,
-            paddle.y, paddle.y + paddle.height
-        )
+        rects_overlap(self.to_rect(), paddle.to_rect())
     }
     
     fn draw(&self, canvas: &mut Canvas, color: Color) {
