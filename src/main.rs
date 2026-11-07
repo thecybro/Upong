@@ -7,6 +7,11 @@ use minifb::{Key, KeyRepeat};
 
 mod utils;
 mod impls;
+mod paddle;
+mod ball;
+
+use paddle::*;
+use ball::*;
 
 const NAME: &str = "UPong";
 
@@ -15,11 +20,6 @@ const BYTES_PER_PIXEL: usize = 3;
 
 const FPS: usize = 60;
 
-const PADDLE_SPEED: f32 = 300.0;
-
-const BALL_SIDE: f32 = 15.0; // single ball side just means width = height aka square
-const BALL_SPEED_X: f32 = 300.0;
-const BALL_SPEED_Y: f32 = 300.0;
 
 const CANVAS_WIDTH: usize = 720;
 const CANVAS_HEIGHT: usize = 480;
@@ -82,24 +82,6 @@ enum ButtonState {
     Pressing,
 }
 
-#[derive(Debug)]
-struct Paddle {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-    speed: f32, // PPS (pixels per sec)
-}
-
-#[derive(Debug)]
-struct Ball {
-    x: f32,
-    y: f32,
-    side: f32, // single side just means width & height are same
-    velocity_x: f32, // PPS (pixels per sec)
-    velocity_y: f32
-}
-
 #[derive(Debug, Clone)]
 struct Canvas {
     width: usize,
@@ -118,22 +100,36 @@ fn main() {
     let mut canvas = Canvas::new(CANVAS_WIDTH, CANVAS_HEIGHT);
     canvas.clear();
 
-    let mut paddle = Paddle { 
-        x: 0.0,
-        y: (canvas.height / 2) as f32,
-        width: 15.0,
-        height: canvas.height as f32/ 4.5,
-        speed: PADDLE_SPEED
-    };
+    // The paddle I will control
+    // let mut paddle = Paddle { 
+    //     x: 0.0,
+    //     y: (canvas.height / 2) as f32,
+    //     width: 15.0,
+    //     height: canvas.height as f32/ 4.5,
+    //     speed: PADDLE_SPEED
+    // };
+    // The default values for paddle are already set;
+    // but we can change them via method chaining on this paddle
+    // if we want
+    let mut paddle = Paddle::new(0.0, &canvas, PaddleKind::Player);
     paddle.set_left();
-    
-    let mut ball = Ball {
-        x: canvas.width as f32 / 2.0,
-        y: canvas.height as f32 / 2.0,
-        side: BALL_SIDE,
-        velocity_x: BALL_SPEED_X,
-        velocity_y: BALL_SPEED_Y
-    };
+
+    // The paddle that will play on its own
+    // I have set x same for both player and enemy even though that
+    // will cause an overlap because .set_right() will automatically
+    // set it to the far right, which will not cause an overlap
+    // because player paddle is on the left
+    let mut automatic_paddle = Paddle::new(0.0, &canvas, PaddleKind::Enemy);
+    automatic_paddle.set_right(&mut canvas);
+
+    // let mut ball = Ball {
+    //     x: canvas.width as f32 / 2.0,
+    //     y: canvas.height as f32 / 2.0,
+    //     side: BALL_SIDE,
+    //     velocity_x: BALL_SPEED_X,
+    //     velocity_y: BALL_SPEED_Y
+    // };
+    let mut ball = Ball::new(None, None, &canvas);
     
     let mut window = Window::new(
         NAME,
@@ -158,7 +154,10 @@ fn main() {
         last_frame = now;
 
         if has_started {
-            ball.update(dt, &canvas, &paddle);
+            ball.update(dt, &canvas, &Paddles {
+                user: paddle,
+                auto: automatic_paddle
+            });
             ball.draw(&mut canvas, Color::WHITE);
         }
 
@@ -167,8 +166,11 @@ fn main() {
         if window.is_key_down(Key::Up) {paddle_direction -= 1.0};
         if window.is_key_down(Key::Down) {paddle_direction += 1.0};
         
-        paddle.update(dt, paddle_direction, &canvas);
+        paddle.update(dt, Some(paddle_direction), &canvas, &ball);
         paddle.draw(&mut canvas, Color::WHITE);
+
+        automatic_paddle.update(dt, None, &canvas, &ball);
+        automatic_paddle.draw(&mut canvas, Color::WHITE);
         
         canvas.to_u32_pixels(&mut buffer);
         window.update_with_buffer(&buffer, canvas.width, canvas.height).unwrap();
