@@ -100,14 +100,6 @@ fn main() {
     let mut canvas = Canvas::new(CANVAS_WIDTH, CANVAS_HEIGHT);
     canvas.clear();
 
-    // The paddle I will control
-    // let mut paddle = Paddle { 
-    //     x: 0.0,
-    //     y: (canvas.height / 2) as f32,
-    //     width: 15.0,
-    //     height: canvas.height as f32/ 4.5,
-    //     speed: PADDLE_SPEED
-    // };
     // The default values for paddle are already set;
     // but we can change them via method chaining on this paddle
     // if we want
@@ -122,13 +114,6 @@ fn main() {
     let mut automatic_paddle = Paddle::new(0.0, &canvas, PaddleKind::Enemy);
     automatic_paddle.set_right(&mut canvas);
 
-    // let mut ball = Ball {
-    //     x: canvas.width as f32 / 2.0,
-    //     y: canvas.height as f32 / 2.0,
-    //     side: BALL_SIDE,
-    //     velocity_x: BALL_SPEED_X,
-    //     velocity_y: BALL_SPEED_Y
-    // };
     let mut ball = Ball::new(None, None, &canvas);
     
     let mut window = Window::new(
@@ -158,25 +143,32 @@ fn main() {
                 user: paddle,
                 auto: automatic_paddle
             });
-            ball.draw(&mut canvas, Color::WHITE);
+            
+            automatic_paddle.update(dt, None, &canvas, &ball);
         }
 
         let mut paddle_direction = 0.0;
         
         if window.is_key_down(Key::Up) {paddle_direction -= 1.0};
         if window.is_key_down(Key::Down) {paddle_direction += 1.0};
+
+        ball.draw(&mut canvas, Color::WHITE);
+        automatic_paddle.draw(&mut canvas, Color::WHITE);
         
         paddle.update(dt, Some(paddle_direction), &canvas, &ball);
         paddle.draw(&mut canvas, Color::WHITE);
 
-        automatic_paddle.update(dt, None, &canvas, &ball);
-        automatic_paddle.draw(&mut canvas, Color::WHITE);
+        if ball.is_game_over(&canvas) {
+            eprintln!("\nGAME OVER!\n");
+            return;
+        }
         
         canvas.to_u32_pixels(&mut buffer);
         window.update_with_buffer(&buffer, canvas.width, canvas.height).unwrap();
 
         if !has_started && window.is_key_pressed(Key::Enter, KeyRepeat::No) {
             has_started = true;
+            println!("Game has started!")
         }
     }
 }

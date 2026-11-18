@@ -73,15 +73,18 @@ impl Ball {
         
         self.x += dt * self.velocity_x;
         self.y += dt * self.velocity_y;
-        
-        if self.x < 0.0 {
-            self.x = 0.0;
-            self.velocity_x = -self.velocity_x
-        }
+
+        // Remove the check that was reflecting the ball when it hit
+        // the left side; with this, we can detect if user/bot has missed
+        // the ball and count it as game over
+        // if self.x < 0.0 {
+        //     self.x = 0.0;
+        //     self.velocity_x = -self.velocity_x
+        // }
 
         if self.y < 0.0 {
             self.y = 0.0;
-            self.velocity_y = -self.velocity_y
+            self.velocity_y = -self.velocity_y;
         }
 
         // Collision detection on the paddles
@@ -115,13 +118,15 @@ impl Ball {
         };
 
         let bottom_limit = canvas.height as f32 - self.side;
-        let side_limit = canvas.width as f32 - self.side;
+        // let side_limit = canvas.width as f32 - self.side;
 
-        if self.x > side_limit {
-            // println!("Side limit reached, stop and flip!");
-            self.x = side_limit;
-            self.velocity_x = -self.velocity_x
-        }
+        // Remove the check that was bouncing the ball when it hit right side,
+        // so we can detect it as game over, if it happened
+        // if self.x > side_limit {
+        //     // println!("Side limit reached, stop and flip!");
+        //     self.x = side_limit;
+        //     self.velocity_x = -self.velocity_x
+        // }
 
         if self.y > bottom_limit {
             // println!("Bottom limit reached, stop and flip!");
@@ -130,6 +135,12 @@ impl Ball {
         }
     }
 
+    /// Gave over if the ball has surpassed either side of the canvas
+    pub fn is_game_over(&self, canvas: &Canvas) -> bool {
+        self.x + self.side > canvas.width as f32
+        || self.x < 0.0 
+    }
+    
     pub fn draw(&self, canvas: &mut Canvas, color: Color) {
         canvas.fill_rect(self.to_rect(), color);
     }

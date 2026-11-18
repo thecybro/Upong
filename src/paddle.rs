@@ -25,7 +25,7 @@ pub enum CanvasSide {
     Left,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PaddleKind {
     Player,
     Enemy,
@@ -61,13 +61,35 @@ impl Paddle {
         self.y = self.y.clamp(0.0, canvas.height as f32 - self.height);
     }
 
+    /// Update bot is it is not already within 10 pixel distance from the ball;
+    /// we calculate & compare the distance so the paddle doesn't become overly
+    /// sensitive to ball position and be perfect to play
+    /// 
+    /// Which would make it unbeatable and game wont be fun, so we make the paddle
+    /// chase the ball only if it's at more than 5 pixels distance
     fn update_bot(
         &mut self,
         dt: f32,
         canvas: &Canvas,
         ball: &Ball
     ) {
-        // println!("Bot hasn't been updated!");
+        // Difference between y axis of us and that of ball.
+        // If it's negative, ball is below us(paddle),
+        //      so we move below (y +=)
+        // 
+        // If it's positive, ball is above,
+        //      so we move above (y -=)
+        let difference = self.y - ball.y;
+
+        if difference.abs() < 10.0 {return;}
+        
+        if difference < 0.0 {
+            self.y += dt * self.speed;
+        } else {
+            self.y -= dt * self.speed;
+        }
+
+        self.y = self.y.clamp(0.0, canvas.height as f32 - self.height);
     }
 
     pub fn hit_ball(&self, ball: &Ball) -> bool {
@@ -83,12 +105,19 @@ impl Paddle {
 #[allow(unused)]
 impl Paddle {
     pub fn new(x: f32, canvas: &Canvas, kind: PaddleKind) -> Self {
+        // Initialize the speed as less than the defualt if the paddle kind is enemy
+        // because; if we didn't, cuz of the math of the enemy, it would be unbeatable
+        let speed = if kind == PaddleKind::Enemy {
+            Self::SPEED * 0.8
+        } else {
+          Self::SPEED  
+        };
         Self {
             x,
             y: canvas.height as f32 / 4.5,
             width: Self::WIDTH,
             height: canvas.height as f32 / 4.5,
-            speed: Self::SPEED,
+            speed,
 
             side: CanvasSide::Left,
             kind,
