@@ -158,8 +158,11 @@ fn main() {
         paddle.update(dt, Some(paddle_direction), &canvas, &ball);
         paddle.draw(&mut canvas, Color::WHITE);
 
-        if ball.is_game_over(&canvas) {
-            eprintln!("\nGAME OVER!\n");
+        if ball.did_player_win(&canvas, &automatic_paddle) {
+            println!("You won!");
+            return;
+        } else if ball.did_player_lose(&canvas, &paddle) {
+            eprintln!("You lost!");
             return;
         }
         

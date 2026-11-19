@@ -135,10 +135,59 @@ impl Ball {
         }
     }
 
+    fn touched_right_wall(&self, canvas: &Canvas) -> bool {
+        self.x + self.side >= canvas.width as f32
+    }
+
+    fn touched_left_wall(&self, canvas: &Canvas) -> bool {
+        self.x <= 0.0
+    }
+        
     /// Gave over if the ball has surpassed either side of the canvas
-    pub fn is_game_over(&self, canvas: &Canvas) -> bool {
-        self.x + self.side > canvas.width as f32
-        || self.x < 0.0 
+    /// 
+    /// We use this helper to determine whether or not the ball has actually
+    /// touched either side; before we try to decide who has lost/won
+    fn is_game_over(&self, canvas: &Canvas) -> bool {
+        self.touched_right_wall(canvas)
+        || self.touched_left_wall(canvas)
+    }
+
+    /// Take the user's paddle and see if it is at the right;
+    /// if it is; see if the ball has touched right wall, if we
+    /// found that it has, player has missed to touch the ball,
+    /// so they lost
+    /// 
+    /// If user's paddle is at left, we see if the ball has touched
+    /// left wall, and player has lost if it has
+    /// 
+    /// If the ball has not touched the wall of the player's side,
+    /// player is not determined to have lost
+    pub fn did_player_lose(&self, canvas: &Canvas, user_paddle: &Paddle) -> bool {
+        if user_paddle.kind != PaddleKind::Player
+        || !self.is_game_over(canvas) 
+            {return false}
+
+        if user_paddle.is_right(canvas) {
+            return self.touched_right_wall(canvas)
+        }
+
+        self.touched_left_wall(canvas)
+    }
+
+    /// Player wins only if enemy loses,
+    /// so we take enemy's paddle and see if the ball has touched the side
+    /// enemy is in; 
+    /// if it has, player has won
+    pub fn did_player_win(&self, canvas: &Canvas, enemy_paddle: &Paddle) -> bool {
+        if enemy_paddle.kind != PaddleKind::Enemy
+        || !self.is_game_over(canvas) 
+            {return false}
+
+        if enemy_paddle.is_right(canvas) {
+            return self.touched_right_wall(canvas)
+        }
+
+        self.touched_left_wall(canvas)
     }
     
     pub fn draw(&self, canvas: &mut Canvas, color: Color) {
