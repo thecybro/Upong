@@ -1,177 +1,175 @@
+use bevy::prelude::*;
 
-use std::time::Instant;
+const WINDOW_WIDTH: f32 = 720.0;
+const WINDOW_HEIGHT: f32 = 480.0; 
 
-use minifb::{Window, WindowOptions};
-// use minifb::{MouseButton, MouseMode};
-use minifb::{Key, KeyRepeat};
+const BALL_SIZE: f32 = 15.0;
+const PADDLE_WIDTH: f32 = 15.0;
+const PADDLE_HEIGHT: f32 = WINDOW_HEIGHT / 4.5;
 
-mod utils;
-mod impls;
-mod paddle;
-mod ball;
+const ENEMY_DISTANCE: f32 = 10.0; // 10 pixels
 
-use paddle::*;
-use ball::*;
+const REFRESH_RATE: f64 = 60.0;
 
-const NAME: &str = "UPong";
-
-const BYTES_PER_PIXEL: usize = 3;
-// const MAX_COLOR_VALUE: usize = 255;
-
-const FPS: usize = 60;
-
-
-const CANVAS_WIDTH: usize = 720;
-const CANVAS_HEIGHT: usize = 480;
-
-#[derive(Debug, Clone, Copy)]
-struct Color {
-    red: u8,
-    green: u8,
-    blue: u8,
-}
-
-#[allow(unused)]
-impl Color {
-    const RED: Color = Color { red: 255, green: 0, blue: 0 };
-    const LIGHT_RED: Color = Color { red: 255, green: 127, blue: 127 };
-    
-    const GREEN: Color = Color { red: 0, green: 255, blue: 0 };
-    const LIGHT_GREEN: Color = Color { red: 144, green: 238, blue: 144 };
-    
-    const BLUE: Color = Color { red: 0, green: 0, blue: 255 };
-    const LIGHT_BLUE: Color = Color { red: 173, green: 216, blue: 230 };
-    
-    const ORANGE: Color = Color { red: 255, green: 128, blue: 0 };
-    const LIGHT_ORANGE: Color = Color { red: 255, green: 180, blue: 80 };
-
-    const WHITE: Color = Color { red: 255, green: 255, blue: 255 };
-
-    const BLACK: Color = Color { red: 0, green: 0, blue: 0 };
-    
-    const DARK_GREY: Color = Color { red: 32, green: 32, blue: 32 };
-    const BACKGROUND: Color = Color::BLACK;
-}
-
-#[derive(Debug, Copy, Clone)]
-struct Rect {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32
-}
-
-#[derive(Copy, Clone)]
-struct Button {
-    rect: Rect,
-    color: Color,
-    border: Border,
-    state: ButtonState,
-}
-
-#[derive(Debug, Copy, Clone)]
-struct Point {
-    x: f32,
-    y: f32,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum ButtonState {
-    Normal,
-    Hovered,
-    Pressing,
-}
-
-#[derive(Debug, Clone)]
-struct Canvas {
-    width: usize,
-    height: usize,
-    background_color: Color,
-    bytes: Vec<u8>,
-}
-
-#[derive(Copy, Clone)]
-struct Border {
-    thickness: f32,
-    color: Color,
-}
+#[derive(Component)] struct Ball { velocity: Vec2 }
+#[derive(Component)] struct Paddle { speed: f32 }
+#[derive(Component)] struct Player;
+#[derive(Component)] struct Enemy;
 
 fn main() {
-    let mut canvas = Canvas::new(CANVAS_WIDTH, CANVAS_HEIGHT);
-    canvas.clear();
+    App::new()
+        .add_plugins(
+            DefaultPlugins.set(
+                WindowPlugin {
+                    primary_window: Some(
+                        Window {
+                            title: "Upong".to_string(),
+                            resolution: (720, 480).into(),
+                            ..default()
+                        }
+                    ),
+                    ..default()
+                }
+            )
+        )
+        .insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(Time::<Fixed>::from_hz(REFRESH_RATE))
+        .add_systems(Startup, setup)
+        .add_systems(
+            FixedUpdate, 
+            (player_movement, ball_movement, enemy_movement),
+        )
+        .run();
+}
 
-    // The default values for paddle are already set;
-    // but we can change them via method chaining on this paddle
-    // if we want
-    let mut paddle = Paddle::new(0.0, &canvas, PaddleKind::Player);
-    paddle.set_left();
+fn setup(mut commands: Commands) {
+    commands.spawn(Camera2d);
 
-    // The paddle that will play on its own
-    // I have set x same for both player and enemy even though that
-    // will cause an overlap because .set_right() will automatically
-    // set it to the far right, which will not cause an overlap
-    // because player paddle is on the left
-    let mut automatic_paddle = Paddle::new(0.0, &canvas, PaddleKind::Enemy);
-    automatic_paddle.set_right(&mut canvas);
+    commands.spawn((
+        Ball {
+            velocity: Vec2::new(300.0, -300.0)
+        },
+        Sprite::from_color(
+            Color::WHITE,
+            Vec2::splat(BALL_SIZE),
+        ),
+        Transform::from_xyz(0.0, 0.0, 0.0)
+    ));
 
-    let mut ball = Ball::new(None, None, &canvas);
-    
-    let mut window = Window::new(
-        NAME,
-        canvas.width,
-        canvas.height,
-        WindowOptions::default()
-    ).unwrap();
+    commands.spawn((
+        Player,
+        Paddle {
+            speed: 300.0,
+        },
+        Sprite::from_color(
+            Color::WHITE,
+            Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)
+        ),
+        Transform::from_xyz(
+            WINDOW_WIDTH / 2.0 - PADDLE_WIDTH / 2.0,
+            0.0,
+            0.0
+        )
+    ));
 
-    window.set_target_fps(FPS);
+    commands.spawn((
+        Enemy,
+        Paddle {
+            speed: 240.0,
+        },
+        Sprite::from_color(
+            Color::WHITE,
+            Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT),
+        ),
+        Transform::from_xyz(
+            - WINDOW_WIDTH / 2.0 + PADDLE_WIDTH / 2.0,
+            0.0,
+            0.0
+        )
+    ));
+}
 
-    let mut buffer: Vec<u32> = Vec::new();
+fn player_movement(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    mut query: Query<(&Paddle, &mut Transform), With<Player>>,
+) {
+    let mut direction = 0.0;
 
-    let mut last_frame = Instant::now();
+    if keyboard.pressed(KeyCode::ArrowUp) {
+        direction += 1.0;
+    }
 
-    let mut has_started = false;
-    
-    while window.is_open() {     
-        canvas.clear(); 
+    if keyboard.pressed(KeyCode::ArrowDown) {
+        direction -= 1.0;
+    }
 
-        let now = Instant::now();
-        let dt = now.duration_since(last_frame).as_secs_f32();
-        last_frame = now;
+    for (paddle, mut transform) in &mut query {
+        transform.translation.y += direction * paddle.speed * time.delta_secs();
 
-        if has_started {
-            ball.update(dt, &canvas, &Paddles {
-                user: paddle,
-                auto: automatic_paddle
-            });
-            
-            automatic_paddle.update(dt, None, &canvas, &ball);
+        let max_y = WINDOW_HEIGHT / 2.0 - PADDLE_HEIGHT / 2.0;
+
+        transform.translation.y = transform.translation.y.clamp(-max_y, max_y);
+    }
+}
+
+
+fn ball_movement(
+    mut query: Query<(&mut Ball, &mut Transform)>,
+    time: Res<Time>,
+) {
+    for (mut ball, mut transform) in &mut query {
+        let dt = time.delta_secs();
+
+        transform.translation += ball.velocity.extend(0.0) * dt;
+
+        let max_x = WINDOW_WIDTH / 2.0 - BALL_SIZE / 2.0;
+        let max_y = WINDOW_HEIGHT / 2.0 - BALL_SIZE / 2.0;
+
+        // Restrict the ball from going above/below the screen
+        if transform.translation.y > max_y {
+            transform.translation.y = max_y;
+            ball.velocity.y = -ball.velocity.y;
+        } else if transform.translation.y < -max_y {
+            transform.translation.y = -max_y;
+            ball.velocity.y = -ball.velocity.y;
         }
 
-        let mut paddle_direction = 0.0;
-        
-        if window.is_key_down(Key::Up) {paddle_direction -= 1.0};
-        if window.is_key_down(Key::Down) {paddle_direction += 1.0};
+        // FIXME: Remove this logic once we implement ball-paddle collision logic
+        // and register ball touching max of either x axes as score to the
+        // respective entity (eg: player/enemy)
+        if transform.translation.x > max_x {
+            transform.translation.x = max_x;
+            ball.velocity.x = -ball.velocity.x;
+        } else if transform.translation.x < -max_x {
+            transform.translation.x = -max_x;
+            ball.velocity.x = -ball.velocity.x
+        }        
+    }
+}
 
-        ball.draw(&mut canvas, Color::WHITE);
-        automatic_paddle.draw(&mut canvas, Color::WHITE);
-        
-        paddle.update(dt, Some(paddle_direction), &canvas, &ball);
-        paddle.draw(&mut canvas, Color::WHITE);
 
-        if ball.did_player_win(&canvas, &automatic_paddle) {
-            println!("You won!");
-            return;
-        } else if ball.did_player_lose(&canvas, &paddle) {
-            eprintln!("You lost!");
-            return;
+fn enemy_movement(
+    time: Res<Time>,
+    ball_query: Query<&Transform, With<Ball>>,
+    mut enemy_query: Query<(&Paddle, &mut Transform),
+        (With<Enemy>, Without<Ball>)>,
+) {
+    let Some(ball_transform) = ball_query.iter().next() else {
+        return;
+    };
+
+    let ball_y = ball_transform.translation.y;
+
+    for (paddle, mut transform) in &mut enemy_query {
+        let difference = ball_y - transform.translation.y;
+
+        if difference.abs() > ENEMY_DISTANCE {
+            transform.translation.y += difference.signum() * paddle.speed * time.delta_secs();
         }
         
-        canvas.to_u32_pixels(&mut buffer);
-        window.update_with_buffer(&buffer, canvas.width, canvas.height).unwrap();
+        let max_y = WINDOW_HEIGHT / 2.0 - PADDLE_HEIGHT / 2.0;
 
-        if !has_started && window.is_key_pressed(Key::Enter, KeyRepeat::No) {
-            has_started = true;
-            println!("Game has started!")
-        }
+        transform.translation.y = transform.translation.y.clamp(-max_y, max_y);
     }
 }
