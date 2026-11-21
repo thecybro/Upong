@@ -4,8 +4,11 @@ const WINDOW_WIDTH: f32 = 720.0;
 const WINDOW_HEIGHT: f32 = 480.0; 
 
 const BALL_SIZE: f32 = 15.0;
+const BALL_SPEED: f32 = 400.0;
+
 const PADDLE_WIDTH: f32 = 15.0;
-const PADDLE_HEIGHT: f32 = WINDOW_HEIGHT / 4.5;
+const PADDLE_HEIGHT: f32 = WINDOW_HEIGHT / 5.0;
+const PADDLE_SPEED: f32 = 400.0;
 
 const ENEMY_DISTANCE: f32 = 10.0; // 10 pixels
 
@@ -15,6 +18,14 @@ const REFRESH_RATE: f64 = 60.0;
 #[derive(Component)] struct Paddle { speed: f32 }
 #[derive(Component)] struct Player;
 #[derive(Component)] struct Enemy;
+
+#[derive(Resource, PartialEq)]
+enum GamePhase {
+    Waiting,
+    Playing,
+    Won,
+    Lost,
+}
 
 fn main() {
     App::new()
@@ -35,7 +46,9 @@ fn main() {
         )
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Time::<Fixed>::from_hz(REFRESH_RATE))
+        .insert_resource(GamePhase::Waiting)
         .add_systems(Startup, setup)
+        .add_systems(Update, start_game)
         .add_systems(
             FixedUpdate, 
             (
@@ -44,9 +57,17 @@ fn main() {
                 ball_movement,
                 enemy_movement,
                 paddle_collisions,
+                check_game_over
             )
             // To handle these operations in order, we use .chain()
-            .chain(),
+            .chain()
+
+            // Those operations will run only if this returns true
+            // The condition here is evaluated for the entire chain;
+            // which doesn't happen after every system call,
+            // It happens after the FixedUpdate system has finished
+            // And FixedUpdate system runs as a whole if this evaluates to true
+            .run_if(is_playing),
         )
         .run();
 }
@@ -57,7 +78,7 @@ fn setup(mut commands: Commands) {
     // Ball (at center)
     commands.spawn((
         Ball {
-            velocity: Vec2::new(300.0, -300.0)
+            velocity: Vec2::new(BALL_SPEED, -BALL_SPEED)
         },
         Sprite::from_color(
             Color::WHITE,
@@ -70,7 +91,7 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Player,
         Paddle {
-            speed: 300.0,
+            speed: PADDLE_SPEED,
         },
         Sprite::from_color(
             Color::WHITE,
@@ -99,6 +120,59 @@ fn setup(mut commands: Commands) {
             0.0
         )
     ));
+}
+
+/// Press enter to start the game and if the game is over
+/// Press enter again to restart
+fn start_game(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut phase: ResMut<GamePhase>,
+) {
+    if *phase == GamePhase::Waiting 
+    && keyboard.just_pressed(KeyCode::Enter)
+    {
+        *phase = GamePhase::Playing;
+        println!("Game has started!");
+    } 
+
+    else if *phase == GamePhase::Won
+    || *phase == GamePhase::Lost
+    {
+        if keyboard.just_pressed(KeyCode::Enter) {
+            *phase = GamePhase::Playing;
+            println!("Game has restarted");
+        }
+    }
+}
+
+fn is_playing(phase: Res<GamePhase>) -> bool {
+    *phase == GamePhase::Playing
+}
+
+/// This declares that player has won/lost assuming the player
+/// is at right and enemy is at left
+fn check_game_over(
+    ball_query: Query<&Transform, With<Ball>>,
+    mut phase: ResMut<GamePhase>,
+) {
+    let Some(ball_transform) = ball_query.iter().next() else {
+        return;
+    };
+
+    let ball_x = ball_transform.translation.x;
+
+    // Ball has touched/crossed right wall; where player is;
+    // so player lost
+    if (ball_x + BALL_SIZE / 2.0) >= WINDOW_WIDTH / 2.0 {
+        *phase = GamePhase::Lost;
+        println!("You lost!");
+    } 
+    // Ball touched/crossed the left wall, where the enemy is;
+    // so player won
+    else if (ball_x - BALL_SIZE / 2.0) <= -WINDOW_WIDTH / 2.0 {
+        *phase = GamePhase::Won;
+        println!("You won!");
+    }
 }
 
 fn player_movement(
@@ -239,8 +313,8 @@ fn paddle_collisions(
             // Clamping between -1 to +1 ensures the ball doesn't bounce/reflect
             // aggresively if it hit at the very edge
             let hit_ratio = 
-                (offset / (PADDLE_HEIGHT / 2.0))
-                .clamp(-1.0, 1.0);
+                offset / (PADDLE_HEIGHT / 2.0);
+                // .clamp(-1.0, 1.0);
 
             // Using angle of 60 makes ball bounce gracefully instead of agressively
             // But it's nto a requirement, we can increase/decrease it based on wants
@@ -289,8 +363,8 @@ fn paddle_collisions(
             let offset = ball_position.y - enemy_transform.translation.y;
     
             let hit_ratio = 
-                (offset / (PADDLE_HEIGHT / 2.0))
-                .clamp(-1.0, 1.0);
+                offset / (PADDLE_HEIGHT / 2.0);
+                // .clamp(-1.0, 1.0);
     
             let max_angle = 60.0_f32.to_radians();
             let angle = hit_ratio * max_angle;
