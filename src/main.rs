@@ -14,6 +14,12 @@ const ENEMY_DISTANCE: f32 = 10.0; // 10 pixels
 
 const REFRESH_RATE: f64 = 60.0;
 
+const TEXT_FONT_SIZE: FontSize = FontSize::Px(32.0);
+
+const WAITING_MESSAGE: &'static str = "UPONG\nPress Enter to start";
+const WON_MESSAGE: &'static str = "YOU WON!\nPress Enter to play again";
+const LOST_MESSAGE: &'static str = "You lost!\nPress Enter to try again";
+
 #[derive(Component)] struct Ball { velocity: Vec2 }
 #[derive(Component)] struct Paddle { speed: f32 }
 #[derive(Component)] struct Player;
@@ -26,6 +32,8 @@ enum GamePhase {
     Won,
     Lost,
 }
+
+#[derive(Component)] struct GameStatusText;
 
 fn main() {
     App::new()
@@ -48,7 +56,9 @@ fn main() {
         .insert_resource(Time::<Fixed>::from_hz(REFRESH_RATE))
         .insert_resource(GamePhase::Waiting)
         .add_systems(Startup, setup)
-        .add_systems(Update, start_game)
+        .add_systems(Update, 
+            (start_game, update_game_status).chain()
+        )
         .add_systems(
             FixedUpdate, 
             (
@@ -75,6 +85,29 @@ fn main() {
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 
+    // The initial text that appears on screen
+    commands.spawn(Node {
+        width: percent(100.0),
+        height: percent(100.0),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        ..default()
+    })
+    .with_children(|parent| {
+        parent.spawn(
+            (
+                GameStatusText,
+                Text::new("UPONG\n Press Enter to start"),
+                TextFont {
+                    font_size: TEXT_FONT_SIZE,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                TextLayout::justify(Justify::Center),
+            )
+        );
+    });
+    
     // Ball (at center)
     commands.spawn((
         Ball {
@@ -149,6 +182,26 @@ fn is_playing(phase: Res<GamePhase>) -> bool {
     *phase == GamePhase::Playing
 }
 
+fn update_game_status(
+    phase: Res<GamePhase>,
+    mut query: Query<&mut Text, With<GameStatusText>>,
+) {
+    if !phase.is_changed() {
+        return;
+    }
+
+    let message = match *phase {
+        GamePhase::Waiting => WAITING_MESSAGE,
+        GamePhase::Playing => "",
+        GamePhase::Won => WON_MESSAGE,
+        GamePhase::Lost => LOST_MESSAGE,
+    };
+
+    for mut text in &mut query {
+        text.0 = message.to_string();
+    }
+}
+
 /// This declares that player has won/lost assuming the player
 /// is at right and enemy is at left
 fn check_game_over(
@@ -165,13 +218,11 @@ fn check_game_over(
     // so player lost
     if (ball_x + BALL_SIZE / 2.0) >= WINDOW_WIDTH / 2.0 {
         *phase = GamePhase::Lost;
-        println!("You lost!");
     } 
     // Ball touched/crossed the left wall, where the enemy is;
     // so player won
     else if (ball_x - BALL_SIZE / 2.0) <= -WINDOW_WIDTH / 2.0 {
         *phase = GamePhase::Won;
-        println!("You won!");
     }
 }
 
