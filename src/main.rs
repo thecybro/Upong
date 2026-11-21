@@ -218,22 +218,62 @@ fn paddle_collisions(
             // Move/stop it right where they touch
             ball_transform.translation.x = player_transform.translation.x - required_x_distance;
 
+            // See how far above/below from paddle's center we have hit
+            // If we get positive; we have hit above the center
+            // If we get negative, we have hit below the center
+            // If we get 0, we have hit right at the center
             let offset = ball_position.y - player_transform.translation.y;
-    
-            let hit_ratio = (
-                    offset / (PADDLE_HEIGHT / 2.0)
-                )
-            .clamp(-1.0, 1.0);
-    
+
+            // We divide offset with half-height of the paddle to normalize
+            // the offset to get a relative measurement based on the usable
+            // vertical range of the paddle, which is the length from center
+            // not the whole length
+            // 
+            // That's what I studied in class; maybe in movement in inertia
+            // chapter; idk
+            // 
+            // We clamp it between -1 to +1 to account for the situation where
+            // the ball can hit paddle while its center is above/below the paddles
+            // vertical boundaries, this happens cuz we are using sizes/lengths 
+            // of both objects.
+            // Clamping between -1 to +1 ensures the ball doesn't bounce/reflect
+            // aggresively if it hit at the very edge
+            let hit_ratio = 
+                (offset / (PADDLE_HEIGHT / 2.0))
+                .clamp(-1.0, 1.0);
+
+            // Using angle of 60 makes ball bounce gracefully instead of agressively
+            // But it's nto a requirement, we can increase/decrease it based on wants
             let max_angle = 60.0_f32.to_radians();
+
+            // What final angle we have got based on the ratio and max angle we have set
             let angle = hit_ratio * max_angle;
-    
+
+            // Take the magnitude of the velocity (speed) which is always positive and 
+            // doesn't have any direction
             let speed = ball.velocity.length();
-    
+
+            // .signum() gives us +1 if the velocity x is positive (ball going right)
+            // -1 if velocity x is negative (ball going left)
+            // 0 if velocity x is zero (when ball is not travelling, ig?)
+            // 
+            // So we simply reverse whatever direction ball was going in
+            // Eg: reversed towards left if the ball was going right
             let direction_x = -ball.velocity.x.signum();
-    
+
+            // Vx = vcos(theta)
+            // Here, direction_x * speed is velocity(v),
+            // theta is angle
+            // so our formula satisfies:
             ball.velocity.x = direction_x * speed * angle.cos();
+
+            // Vy = vsin(theta)
+            // We use original speed because we want to keep the speed 
+            // of the ball same and just change the direction via sin(angle)
             ball.velocity.y = speed * angle.sin();
+
+            // I hope the formulas are correct cuz that's what I remembered
+            // from what I had studied
         } 
         // Moving left; towards enemy paddle
         else if ball.velocity.x < 0.0 
@@ -248,10 +288,9 @@ fn paddle_collisions(
 
             let offset = ball_position.y - enemy_transform.translation.y;
     
-            let hit_ratio = (
-                    offset / (PADDLE_HEIGHT / 2.0)
-                )
-            .clamp(-1.0, 1.0);
+            let hit_ratio = 
+                (offset / (PADDLE_HEIGHT / 2.0))
+                .clamp(-1.0, 1.0);
     
             let max_angle = 60.0_f32.to_radians();
             let angle = hit_ratio * max_angle;
