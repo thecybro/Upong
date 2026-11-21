@@ -25,6 +25,7 @@ fn main() {
                         Window {
                             title: "Upong".to_string(),
                             resolution: (720, 480).into(),
+                            resizable: false,
                             ..default()
                         }
                     ),
@@ -37,7 +38,15 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             FixedUpdate, 
-            (player_movement, ball_movement, enemy_movement),
+            (
+                // We want to handle these operations in order
+                player_movement, 
+                ball_movement,
+                enemy_movement,
+                paddle_collisions,
+            )
+            // To handle these operations in order, we use .chain()
+            .chain(),
         )
         .run();
 }
@@ -45,6 +54,7 @@ fn main() {
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 
+    // Ball (at center)
     commands.spawn((
         Ball {
             velocity: Vec2::new(300.0, -300.0)
@@ -56,6 +66,7 @@ fn setup(mut commands: Commands) {
         Transform::from_xyz(0.0, 0.0, 0.0)
     ));
 
+    // Player paddle (at right)
     commands.spawn((
         Player,
         Paddle {
@@ -72,6 +83,7 @@ fn setup(mut commands: Commands) {
         )
     ));
 
+    // Enemy paddle (at left)
     commands.spawn((
         Enemy,
         Paddle {
@@ -171,5 +183,61 @@ fn enemy_movement(
         let max_y = WINDOW_HEIGHT / 2.0 - PADDLE_HEIGHT / 2.0;
 
         transform.translation.y = transform.translation.y.clamp(-max_y, max_y);
+    }
+}
+
+/// For now, this assumes that right paddle is the user paddle 
+/// and left paddle is the enemy paddle
+fn paddle_collisions(
+    mut ball_query: Query<(&mut Ball, &mut Transform), With<Ball>>,
+    player_query: Query<&Transform,
+        (With<Player>, Without<Ball>)>,
+    enemy_query: Query<&Transform,
+        (With<Enemy>, Without<Ball>)>,
+) {
+    let (Some(player_transform), Some(enemy_transform)) =
+        (player_query.iter().next(), enemy_query.iter().next()) 
+    else {
+        return;
+    };
+
+    let required_x_distance = (BALL_SIZE + PADDLE_WIDTH) / 2.0;
+    let required_y_distance = (BALL_SIZE + PADDLE_HEIGHT) / 2.0;
+
+    for (mut ball, mut ball_transform) in &mut ball_query {
+        let ball_position = ball_transform.translation;
+
+        // Moving right; where the player paddle is
+        if ball.velocity.x > 0.0 
+            && (ball_position.x - player_transform.translation.x).abs()
+            <= required_x_distance
+            && (ball_position.y - player_transform.translation.y).abs()
+            <= required_y_distance 
+        {
+            println!("Hit right paddle!");
+            // Move/stop it right where they touch
+            ball_transform.translation.x = ball_transform.translation.x - required_x_distance;
+
+            // Reverse the velocity of the ball
+            // We use .abs() to ensure the velocity is positive (moving towards pos x axis)
+            // and reverse/make it negative by putting - operator at front
+            ball.velocity.x = -ball.velocity.x.abs();
+        } 
+        // Moving left; towards enemy paddle
+        else if ball.velocity.x < 0.0 
+            && (ball_position.x - enemy_transform.translation.x).abs()
+            <= required_x_distance
+            && (ball_position.y - enemy_transform.translation.y).abs()
+            <= required_y_distance
+        {
+            println!("Hit left paddle!");
+            // Push it required_x_distance right to stop it from overlapping more
+            ball_transform.translation.x = ball_transform.translation.x + required_x_distance;
+
+            // Since the x velocity is negative, take its absolute value and assign
+            // to x velocity to make it positive; which reverses its x velocity (makes positive)
+            // which makes it travel towards right direction
+            ball.velocity.x = ball.velocity.x.abs();
+        }
     }
 }
