@@ -127,7 +127,7 @@ fn player_movement(
 
 
 fn ball_movement(
-    mut query: Query<(&mut Ball, &mut Transform)>,
+    mut query: Query<(&mut Ball, &mut Transform), With<Ball>>,
     time: Res<Time>,
 ) {
     for (mut ball, mut transform) in &mut query {
@@ -214,14 +214,26 @@ fn paddle_collisions(
             && (ball_position.y - player_transform.translation.y).abs()
             <= required_y_distance 
         {
-            println!("Hit right paddle!");
+            // println!("Hit right paddle!");
             // Move/stop it right where they touch
-            ball_transform.translation.x = ball_transform.translation.x - required_x_distance;
+            ball_transform.translation.x = player_transform.translation.x - required_x_distance;
 
-            // Reverse the velocity of the ball
-            // We use .abs() to ensure the velocity is positive (moving towards pos x axis)
-            // and reverse/make it negative by putting - operator at front
-            ball.velocity.x = -ball.velocity.x.abs();
+            let offset = ball_position.y - player_transform.translation.y;
+    
+            let hit_ratio = (
+                    offset / (PADDLE_HEIGHT / 2.0)
+                )
+            .clamp(-1.0, 1.0);
+    
+            let max_angle = 60.0_f32.to_radians();
+            let angle = hit_ratio * max_angle;
+    
+            let speed = ball.velocity.length();
+    
+            let direction_x = -ball.velocity.x.signum();
+    
+            ball.velocity.x = direction_x * speed * angle.cos();
+            ball.velocity.y = speed * angle.sin();
         } 
         // Moving left; towards enemy paddle
         else if ball.velocity.x < 0.0 
@@ -230,14 +242,26 @@ fn paddle_collisions(
             && (ball_position.y - enemy_transform.translation.y).abs()
             <= required_y_distance
         {
-            println!("Hit left paddle!");
+            // println!("Hit left paddle!");
             // Push it required_x_distance right to stop it from overlapping more
-            ball_transform.translation.x = ball_transform.translation.x + required_x_distance;
+            ball_transform.translation.x = enemy_transform.translation.x + required_x_distance;
 
-            // Since the x velocity is negative, take its absolute value and assign
-            // to x velocity to make it positive; which reverses its x velocity (makes positive)
-            // which makes it travel towards right direction
-            ball.velocity.x = ball.velocity.x.abs();
+            let offset = ball_position.y - enemy_transform.translation.y;
+    
+            let hit_ratio = (
+                    offset / (PADDLE_HEIGHT / 2.0)
+                )
+            .clamp(-1.0, 1.0);
+    
+            let max_angle = 60.0_f32.to_radians();
+            let angle = hit_ratio * max_angle;
+    
+            let speed = ball.velocity.length();
+    
+            let direction_x = -ball.velocity.x.signum();
+    
+            ball.velocity.x = direction_x * speed * angle.cos();
+            ball.velocity.y = speed * angle.sin();
         }
     }
 }
