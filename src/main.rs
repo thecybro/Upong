@@ -8,9 +8,18 @@ const BALL_SPEED: f32 = 400.0;
 
 const PADDLE_WIDTH: f32 = 15.0;
 const PADDLE_HEIGHT: f32 = WINDOW_HEIGHT / 5.0;
-const PADDLE_SPEED: f32 = 400.0;
+const PLAYER_PADDLE_SPEED: f32 = 400.0;
 
+const ENEMY_PADDLE_SPEED: f32 = PLAYER_PADDLE_SPEED;
 const ENEMY_DISTANCE: f32 = 10.0; // 10 pixels
+
+const PADDLE_MAX_Y: f32 = WINDOW_HEIGHT / 2.0 - PADDLE_HEIGHT / 2.0;
+
+const BALL_MAX_X: f32 = WINDOW_WIDTH / 2.0 - BALL_SIZE / 2.0;
+const BALL_MAX_Y: f32 = WINDOW_HEIGHT / 2.0 - BALL_SIZE / 2.0;
+
+const PLAYER_POSITION: f32 = (WINDOW_WIDTH - PADDLE_WIDTH) / 2.0;
+const ENEMY_POSITION: f32 = (-WINDOW_WIDTH + PADDLE_WIDTH) / 2.0;
 
 const REFRESH_RATE: f64 = 60.0;
 
@@ -43,7 +52,7 @@ fn main() {
                     primary_window: Some(
                         Window {
                             title: "Upong".to_string(),
-                            resolution: (720, 480).into(),
+                            resolution: (WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32).into(),
                             resizable: false,
                             ..default()
                         }
@@ -57,7 +66,7 @@ fn main() {
         .insert_resource(GamePhase::Waiting)
         .add_systems(Startup, setup)
         .add_systems(Update, 
-            (start_game, update_game_status).chain()
+            (start_game, reset_game, update_game_status).chain()
         )
         .add_systems(
             FixedUpdate, 
@@ -82,6 +91,8 @@ fn main() {
         .run();
 }
 
+/// Setup just sets up the initial window/page visible to players, and
+/// when they switch to Playing state, then only they see paddles and balls
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 
@@ -97,7 +108,7 @@ fn setup(mut commands: Commands) {
         parent.spawn(
             (
                 GameStatusText,
-                Text::new("UPONG\n Press Enter to start"),
+                Text::new(WAITING_MESSAGE.to_string()),
                 TextFont {
                     font_size: TEXT_FONT_SIZE,
                     ..default()
@@ -124,14 +135,14 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Player,
         Paddle {
-            speed: PADDLE_SPEED,
+            speed: PLAYER_PADDLE_SPEED,
         },
         Sprite::from_color(
             Color::WHITE,
             Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)
         ),
         Transform::from_xyz(
-            WINDOW_WIDTH / 2.0 - PADDLE_WIDTH / 2.0,
+            PLAYER_POSITION,
             0.0,
             0.0
         )
@@ -141,14 +152,14 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Enemy,
         Paddle {
-            speed: 240.0,
+            speed: ENEMY_PADDLE_SPEED,
         },
         Sprite::from_color(
             Color::WHITE,
             Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT),
         ),
         Transform::from_xyz(
-            - WINDOW_WIDTH / 2.0 + PADDLE_WIDTH / 2.0,
+            ENEMY_POSITION,
             0.0,
             0.0
         )
@@ -161,20 +172,59 @@ fn start_game(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut phase: ResMut<GamePhase>,
 ) {
-    if *phase == GamePhase::Waiting 
+    if *phase != GamePhase::Playing 
     && keyboard.just_pressed(KeyCode::Enter)
     {
         *phase = GamePhase::Playing;
-        println!("Game has started!");
-    } 
+    }
+}
 
-    else if *phase == GamePhase::Won
-    || *phase == GamePhase::Lost
-    {
-        if keyboard.just_pressed(KeyCode::Enter) {
-            *phase = GamePhase::Playing;
-            println!("Game has restarted");
-        }
+/// Reset the paddles & ball back to default if the phase has changed
+/// and the phase is playing; which happens only when user explicitly 
+/// presses Enter
+/// 
+/// Phase doesn't change to Playing without user pressing Enter
+fn reset_game(
+    phase: Res<GamePhase>,
+    mut ball_query: Query<(&mut Ball, &mut Transform), With<Ball>>,
+    mut player_query: Query<
+        &mut Transform,
+        (With<Player>, Without<Ball>, Without<Enemy>)
+    >,
+    mut enemy_query: Query<
+        &mut Transform,
+        (With<Enemy>, Without<Ball>, Without<Player>)
+    >,
+) {
+    // If the phase was just changed and current phase is Playing,
+    // then only we want to reset the game.
+    // 
+    // Player can transition from Waiting/Won/Lost to Playing by
+    // pressing Enter.
+    // So whenever that happens; we reset the objects back to default
+    if !phase.is_changed() || *phase != GamePhase::Playing {
+        return;
+    }
+
+    for (mut ball, mut ball_transform) in &mut ball_query {
+        ball_transform.translation = Vec3::ZERO;
+        ball.velocity = Vec2::new(BALL_SPEED, -BALL_SPEED);
+    }
+
+    for mut player_transform in &mut player_query {
+        player_transform.translation = Vec3::new(
+            PLAYER_POSITION,
+            0.0,
+            0.0
+        );
+    }
+
+    for mut enemy_transform in &mut enemy_query {
+        enemy_transform.translation = Vec3::new(
+            ENEMY_POSITION,
+            0.0,
+            0.0
+        );
     }
 }
 
@@ -244,9 +294,7 @@ fn player_movement(
     for (paddle, mut transform) in &mut query {
         transform.translation.y += direction * paddle.speed * time.delta_secs();
 
-        let max_y = WINDOW_HEIGHT / 2.0 - PADDLE_HEIGHT / 2.0;
-
-        transform.translation.y = transform.translation.y.clamp(-max_y, max_y);
+        transform.translation.y = transform.translation.y.clamp(-PADDLE_MAX_Y, PADDLE_MAX_Y);
     }
 }
 
@@ -260,26 +308,23 @@ fn ball_movement(
 
         transform.translation += ball.velocity.extend(0.0) * dt;
 
-        let max_x = WINDOW_WIDTH / 2.0 - BALL_SIZE / 2.0;
-        let max_y = WINDOW_HEIGHT / 2.0 - BALL_SIZE / 2.0;
-
         // Restrict the ball from going above/below the screen
-        if transform.translation.y > max_y {
-            transform.translation.y = max_y;
+        if transform.translation.y > BALL_MAX_Y {
+            transform.translation.y = BALL_MAX_Y;
             ball.velocity.y = -ball.velocity.y;
-        } else if transform.translation.y < -max_y {
-            transform.translation.y = -max_y;
+        } else if transform.translation.y < -BALL_MAX_Y {
+            transform.translation.y = -BALL_MAX_Y;
             ball.velocity.y = -ball.velocity.y;
         }
 
         // FIXME: Remove this logic once we implement ball-paddle collision logic
         // and register ball touching max of either x axes as score to the
         // respective entity (eg: player/enemy)
-        if transform.translation.x > max_x {
-            transform.translation.x = max_x;
+        if transform.translation.x > BALL_MAX_X {
+            transform.translation.x = BALL_MAX_X;
             ball.velocity.x = -ball.velocity.x;
-        } else if transform.translation.x < -max_x {
-            transform.translation.x = -max_x;
+        } else if transform.translation.x < -BALL_MAX_X {
+            transform.translation.x = -BALL_MAX_X;
             ball.velocity.x = -ball.velocity.x
         }        
     }
@@ -305,9 +350,7 @@ fn enemy_movement(
             transform.translation.y += difference.signum() * paddle.speed * time.delta_secs();
         }
         
-        let max_y = WINDOW_HEIGHT / 2.0 - PADDLE_HEIGHT / 2.0;
-
-        transform.translation.y = transform.translation.y.clamp(-max_y, max_y);
+        transform.translation.y = transform.translation.y.clamp(-PADDLE_MAX_Y, PADDLE_MAX_Y);
     }
 }
 
