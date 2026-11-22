@@ -1,14 +1,21 @@
 use bevy::prelude::*;
 
-const WINDOW_WIDTH: f32 = 720.0;
-const WINDOW_HEIGHT: f32 = 480.0; 
+const WINDOW_WIDTH: f32 = 650.0;
+const WINDOW_HEIGHT: f32 = 450.0; 
+// diagonal when (w, h) = (650, 450) is 790.5
 
 const BALL_SIZE: f32 = 15.0;
-const BALL_SPEED: f32 = 400.0;
+
+// Resulting magnitude after we put this speed on both X and Y axis is 636.39
+const BALL_SPEED: f32 = 450.0; 
+
+// This max speed is the result of plotting increased speed on both axis
+// It's not the speed on each axis
+const BALL_MAX_SPEED: f32 = 800.0;
 
 const PADDLE_WIDTH: f32 = 15.0;
-const PADDLE_HEIGHT: f32 = WINDOW_HEIGHT / 5.0;
-const PLAYER_PADDLE_SPEED: f32 = 400.0;
+const PADDLE_HEIGHT: f32 = WINDOW_HEIGHT / 6.0;
+const PLAYER_PADDLE_SPEED: f32 = 450.0;
 
 const ENEMY_PADDLE_SPEED: f32 = PLAYER_PADDLE_SPEED;
 const ENEMY_DISTANCE: f32 = 10.0; // 10 pixels
@@ -22,6 +29,8 @@ const PLAYER_POSITION: f32 = (WINDOW_WIDTH - PADDLE_WIDTH) / 2.0;
 const ENEMY_POSITION: f32 = (-WINDOW_WIDTH + PADDLE_WIDTH) / 2.0;
 
 const REFRESH_RATE: f64 = 60.0;
+
+const MAX_BOUNCE_ANGLE: f32 = 45.0_f32.to_radians();
 
 const TEXT_FONT_SIZE: FontSize = FontSize::Px(32.0);
 
@@ -308,13 +317,24 @@ fn ball_movement(
 
         transform.translation += ball.velocity.extend(0.0) * dt;
 
+        // We reduce the speed by 2% everytime ball hits wall
+        // This is the inverse of having a hit ratio of 0.1;
+        // which increases speed by 2%
+        let speed_friction = 1.02;
+        
         // Restrict the ball from going above/below the screen
+        // 
+        // We introduce a little friction to reduce the speed of
+        // the ball everytime it hits the wall but without letting
+        // it go below its initial speed
         if transform.translation.y > BALL_MAX_Y {
             transform.translation.y = BALL_MAX_Y;
-            ball.velocity.y = -ball.velocity.y;
+            ball.velocity.y = -(ball.velocity.y / speed_friction);
+            ball.velocity.y = ball.velocity.y.min(BALL_SPEED)
         } else if transform.translation.y < -BALL_MAX_Y {
             transform.translation.y = -BALL_MAX_Y;
-            ball.velocity.y = -ball.velocity.y;
+            ball.velocity.y = -(ball.velocity.y / speed_friction);
+            ball.velocity.y = ball.velocity.y.min(BALL_SPEED)
         }
 
         // FIXME: Remove this logic once we implement ball-paddle collision logic
@@ -322,10 +342,12 @@ fn ball_movement(
         // respective entity (eg: player/enemy)
         if transform.translation.x > BALL_MAX_X {
             transform.translation.x = BALL_MAX_X;
-            ball.velocity.x = -ball.velocity.x;
+            ball.velocity.x = -(ball.velocity.x / speed_friction);
+            ball.velocity.x = ball.velocity.x.min(BALL_SPEED)
         } else if transform.translation.x < -BALL_MAX_X {
             transform.translation.x = -BALL_MAX_X;
-            ball.velocity.x = -ball.velocity.x
+            ball.velocity.x = -(ball.velocity.x / speed_friction);
+            ball.velocity.x = ball.velocity.x.min(BALL_SPEED)
         }        
     }
 }
@@ -407,19 +429,29 @@ fn paddle_collisions(
             // Clamping between -1 to +1 ensures the ball doesn't bounce/reflect
             // aggresively if it hit at the very edge
             let hit_ratio = 
-                offset / (PADDLE_HEIGHT / 2.0);
-                // .clamp(-1.0, 1.0);
+                (offset / (PADDLE_HEIGHT / 2.0))
+                .clamp(-1.0, 1.0);
 
-            // Using angle of 60 makes ball bounce gracefully instead of agressively
-            // But it's nto a requirement, we can increase/decrease it based on wants
-            let max_angle = 60.0_f32.to_radians();
-
+                // println!("Hit ratio: {hit_ratio}");
+                
             // What final angle we have got based on the ratio and max angle we have set
-            let angle = hit_ratio * max_angle;
+            let angle = hit_ratio * MAX_BOUNCE_ANGLE;
 
             // Take the magnitude of the velocity (speed) which is always positive and 
             // doesn't have any direction
-            let speed = ball.velocity.length();
+            // 
+            // Here, we increase the speed of the ball based on how steeply it touched the paddle
+            let previous_speed = ball.velocity.length();
+
+            // This formula increases the speed of the ball by 20% of hit ratio
+            // when hit ratio is maximum (1.0) and by 2% when hit ratio is 0.1
+            // 
+            // Basically x = x * ( 1 + ratio * 0.2)
+            let speed = previous_speed * (1.0 + hit_ratio.abs() * 0.2);
+            let speed = speed.clamp(BALL_SPEED, BALL_MAX_SPEED);
+
+            // println!("|| Previous speed: {previous_speed} ||");
+            // println!("|| Speed:          {speed} ||");
 
             // .signum() gives us +1 if the velocity x is positive (ball going right)
             // -1 if velocity x is negative (ball going left)
@@ -457,14 +489,25 @@ fn paddle_collisions(
             let offset = ball_position.y - enemy_transform.translation.y;
     
             let hit_ratio = 
-                offset / (PADDLE_HEIGHT / 2.0);
-                // .clamp(-1.0, 1.0);
+                (offset / (PADDLE_HEIGHT / 2.0))
+                .clamp(-1.0, 1.0);
+
+                println!("Hit ratio: {hit_ratio}");
+                
+            let angle = hit_ratio * MAX_BOUNCE_ANGLE;
     
-            let max_angle = 60.0_f32.to_radians();
-            let angle = hit_ratio * max_angle;
-    
-            let speed = ball.velocity.length();
-    
+            // Here, we increase the speed of the ball based on how steeply it touched the paddle
+            let previous_speed = ball.velocity.length();
+            // This formula increases the speed of the ball by 20% of hit ratio
+            // when hit ratio is maximum (1.0) and by 2% when hit ratio is 0.1
+            // 
+            // Basically x = x * ( 1 + ratio * 0.2)
+            let speed = previous_speed * (1.0 + hit_ratio.abs() * 0.2);
+            let speed = speed.clamp(BALL_SPEED, BALL_MAX_SPEED);
+
+            // println!("|| Previous speed: {previous_speed} ||");
+            // println!("|| Speed:          {speed} ||");
+            // 
             let direction_x = -ball.velocity.x.signum();
     
             ball.velocity.x = direction_x * speed * angle.cos();
