@@ -39,7 +39,7 @@ const SCORE_FONT_SIZE: FontSize = FontSize::Px(42.0);
 const SCORE_X_POSITION: f32 = WINDOW_WIDTH / 10.0;
 const SCORE_Y_POSITION: f32 = WINDOW_HEIGHT / 2.5;
 
-const MAX_SCORE: u32 = 10;
+const MAX_SCORE: u32 = 2;
 
 const WAITING_MESSAGE: &'static str = "UPONG\nPress Enter to start";
 const WON_MESSAGE: &'static str = "YOU WON!\nPress Enter to play again";
@@ -92,7 +92,7 @@ fn main() {
         .insert_resource(GameScores::default())
         .add_systems(Startup, setup)
         .add_systems(Update, 
-            (start_game, reset_game, update_game_status).chain()
+            (start_game, reset_game, update_game_scores, update_game_status).chain()
         )
         .add_systems(
             FixedUpdate, 
@@ -102,7 +102,6 @@ fn main() {
                 ball_movement,
                 enemy_movement,
                 paddle_collisions,
-                update_game_scores,
                 check_game_over
             )
             // To handle these operations in order, we use .chain()
@@ -289,15 +288,17 @@ fn is_playing(phase: Res<GamePhase>) -> bool {
     *phase == GamePhase::Playing
 }
 
+/// This increases the score if the score has increased somehow
+/// It doesn't care if someone/something increased score even outside
+/// of Playing game phase
 fn update_game_scores(
-    phase: Res<GamePhase>,
     scores: Res<GameScores>,
     mut player_score_query: Query<&mut Text2d,
         (With<PlayerScoreText>, Without<EnemyScoreText>)>,
     mut enemy_score_query: Query<&mut Text2d,
         (With<EnemyScoreText>, Without<PlayerScoreText>)>,
 ) {
-    if !is_playing(phase) || !scores.is_changed(){
+    if !scores.is_changed() {
         return;
     }
 
