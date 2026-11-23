@@ -5,7 +5,7 @@ rust-version = "1.97.0"
 edition = "2024"
 license = "MIT"
 
-description = "A simple pong game written completely from scratch in rust"
+description = "A simple pong game written completely in rust"
 readme = "README.md"
 
 [profile.dev]
@@ -19,4 +19,8 @@ name = "upong"
 path = "src/main.rs"
 
 [dependencies]
-bevy = "0.20.1"
+bevy = {
+    version = "0.20.1",
+    default-features = false,
+    features = ["std", "debug", "bevy_winit", "x11", "wayland", "default_font", "2d_bevy_render", "ui_bevy_render"]
+}

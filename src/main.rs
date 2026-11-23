@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, sprite::Anchor, text::FontFeatureTag};
 
 const WINDOW_WIDTH: f32 = 650.0;
 const WINDOW_HEIGHT: f32 = 450.0; 
@@ -17,7 +17,8 @@ const PADDLE_WIDTH: f32 = 15.0;
 const PADDLE_HEIGHT: f32 = WINDOW_HEIGHT / 6.0;
 const PLAYER_PADDLE_SPEED: f32 = 450.0;
 
-const ENEMY_PADDLE_SPEED: f32 = PLAYER_PADDLE_SPEED;
+// Make enemy speed 80% of player cuz it would be too unfair otherwise
+const ENEMY_PADDLE_SPEED: f32 = PLAYER_PADDLE_SPEED * 0.8;
 const ENEMY_DISTANCE: f32 = 10.0; // 10 pixels
 
 const PADDLE_MAX_Y: f32 = WINDOW_HEIGHT / 2.0 - PADDLE_HEIGHT / 2.0;
@@ -33,6 +34,12 @@ const REFRESH_RATE: f64 = 60.0;
 const MAX_BOUNCE_ANGLE: f32 = 45.0_f32.to_radians();
 
 const TEXT_FONT_SIZE: FontSize = FontSize::Px(32.0);
+const SCORE_FONT_SIZE: FontSize = FontSize::Px(42.0);
+
+const SCORE_X_POSITION: f32 = WINDOW_WIDTH / 10.0;
+const SCORE_Y_POSITION: f32 = WINDOW_HEIGHT / 2.5;
+
+const MAX_SCORE: u32 = 10;
 
 const WAITING_MESSAGE: &'static str = "UPONG\nPress Enter to start";
 const WON_MESSAGE: &'static str = "YOU WON!\nPress Enter to play again";
@@ -52,6 +59,15 @@ enum GamePhase {
 }
 
 #[derive(Component)] struct GameStatusText;
+
+#[derive(Resource, Debug, Default)]
+struct GameScores {
+    enemy: u32,
+    player: u32,
+}
+
+#[derive(Component)] struct PlayerScoreText;
+#[derive(Component)] struct EnemyScoreText;
 
 fn main() {
     App::new()
@@ -73,6 +89,7 @@ fn main() {
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Time::<Fixed>::from_hz(REFRESH_RATE))
         .insert_resource(GamePhase::Waiting)
+        .insert_resource(GameScores::default())
         .add_systems(Startup, setup)
         .add_systems(Update, 
             (start_game, reset_game, update_game_status).chain()
@@ -85,6 +102,7 @@ fn main() {
                 ball_movement,
                 enemy_movement,
                 paddle_collisions,
+                update_game_scores,
                 check_game_over
             )
             // To handle these operations in order, we use .chain()
@@ -127,6 +145,32 @@ fn setup(mut commands: Commands) {
             )
         );
     });
+
+    commands.spawn((
+        EnemyScoreText,
+        Text2d::new("0"),
+        TextFont {
+            font_size: SCORE_FONT_SIZE,
+            font_features: vec![FontFeatureTag::TABULAR_FIGURES].into(),
+            ..default()
+        },
+        TextLayout::justify(Justify::Center),
+        Anchor::CENTER,
+        Transform::from_xyz(-SCORE_X_POSITION, SCORE_Y_POSITION, 0.0)
+    ));
+
+    commands.spawn((
+        PlayerScoreText,
+        Text2d::new("0"),
+        TextFont {
+            font_size: SCORE_FONT_SIZE,
+            font_features: vec![FontFeatureTag::TABULAR_FIGURES].into(),
+            ..default()
+        },
+        TextLayout::justify(Justify::Center),
+        Anchor::CENTER,
+        Transform::from_xyz(SCORE_X_POSITION, SCORE_Y_POSITION, 0.0)
+    ));
     
     // Ball (at center)
     commands.spawn((
@@ -195,6 +239,7 @@ fn start_game(
 /// Phase doesn't change to Playing without user pressing Enter
 fn reset_game(
     phase: Res<GamePhase>,
+    mut scores: ResMut<GameScores>,
     mut ball_query: Query<(&mut Ball, &mut Transform), With<Ball>>,
     mut player_query: Query<
         &mut Transform,
@@ -215,6 +260,9 @@ fn reset_game(
         return;
     }
 
+    scores.enemy = 0;
+    scores.player = 0;
+    
     for (mut ball, mut ball_transform) in &mut ball_query {
         ball_transform.translation = Vec3::ZERO;
         ball.velocity = Vec2::new(BALL_SPEED, -BALL_SPEED);
@@ -241,6 +289,27 @@ fn is_playing(phase: Res<GamePhase>) -> bool {
     *phase == GamePhase::Playing
 }
 
+fn update_game_scores(
+    phase: Res<GamePhase>,
+    scores: Res<GameScores>,
+    mut player_score_query: Query<&mut Text2d,
+        (With<PlayerScoreText>, Without<EnemyScoreText>)>,
+    mut enemy_score_query: Query<&mut Text2d,
+        (With<EnemyScoreText>, Without<PlayerScoreText>)>,
+) {
+    if !is_playing(phase) || !scores.is_changed(){
+        return;
+    }
+
+    if let Ok(mut text) = player_score_query.single_mut() {
+        **text = scores.player.to_string();
+    }
+
+    if let Ok(mut text) = enemy_score_query.single_mut() {
+        **text = scores.enemy.to_string();
+    }
+}
+
 fn update_game_status(
     phase: Res<GamePhase>,
     mut query: Query<&mut Text, With<GameStatusText>>,
@@ -248,39 +317,29 @@ fn update_game_status(
     if !phase.is_changed() {
         return;
     }
-
+    
     let message = match *phase {
         GamePhase::Waiting => WAITING_MESSAGE,
         GamePhase::Playing => "",
         GamePhase::Won => WON_MESSAGE,
         GamePhase::Lost => LOST_MESSAGE,
     };
-
+    
     for mut text in &mut query {
         text.0 = message.to_string();
     }
 }
 
-/// This declares that player has won/lost assuming the player
-/// is at right and enemy is at left
+/// This declares that player has won/lost based on whose score
+/// has reached max score
 fn check_game_over(
-    ball_query: Query<&Transform, With<Ball>>,
     mut phase: ResMut<GamePhase>,
+    scores: Res<GameScores>,
 ) {
-    let Some(ball_transform) = ball_query.iter().next() else {
-        return;
-    };
-
-    let ball_x = ball_transform.translation.x;
-
-    // Ball has touched/crossed right wall; where player is;
-    // so player lost
-    if (ball_x + BALL_SIZE / 2.0) >= WINDOW_WIDTH / 2.0 {
+    // Player either wins or loses only when either has reached max score
+    if scores.enemy >= MAX_SCORE {
         *phase = GamePhase::Lost;
-    } 
-    // Ball touched/crossed the left wall, where the enemy is;
-    // so player won
-    else if (ball_x - BALL_SIZE / 2.0) <= -WINDOW_WIDTH / 2.0 {
+    } else if scores.player >= MAX_SCORE {
         *phase = GamePhase::Won;
     }
 }
@@ -310,6 +369,7 @@ fn player_movement(
 
 fn ball_movement(
     mut query: Query<(&mut Ball, &mut Transform), With<Ball>>,
+    mut scores: ResMut<GameScores>,
     time: Res<Time>,
 ) {
     for (mut ball, mut transform) in &mut query {
@@ -337,17 +397,23 @@ fn ball_movement(
             ball.velocity.y = ball.velocity.y.min(BALL_SPEED)
         }
 
-        // FIXME: Remove this logic once we implement ball-paddle collision logic
-        // and register ball touching max of either x axes as score to the
-        // respective entity (eg: player/enemy)
+        // When ball touches right edge (where player is)
+        // Player missed
         if transform.translation.x > BALL_MAX_X {
             transform.translation.x = BALL_MAX_X;
             ball.velocity.x = -(ball.velocity.x / speed_friction);
-            ball.velocity.x = ball.velocity.x.min(BALL_SPEED)
-        } else if transform.translation.x < -BALL_MAX_X {
+            ball.velocity.x = ball.velocity.x.min(BALL_SPEED);
+
+            scores.enemy += 1;
+        }
+        // When ball touches left edge (where enemy is)
+        // Enemy missed
+        else if transform.translation.x < -BALL_MAX_X {
             transform.translation.x = -BALL_MAX_X;
             ball.velocity.x = -(ball.velocity.x / speed_friction);
-            ball.velocity.x = ball.velocity.x.min(BALL_SPEED)
+            ball.velocity.x = ball.velocity.x.min(BALL_SPEED);
+
+            scores.player += 1;
         }        
     }
 }
@@ -431,8 +497,6 @@ fn paddle_collisions(
             let hit_ratio = 
                 (offset / (PADDLE_HEIGHT / 2.0))
                 .clamp(-1.0, 1.0);
-
-                // println!("Hit ratio: {hit_ratio}");
                 
             // What final angle we have got based on the ratio and max angle we have set
             let angle = hit_ratio * MAX_BOUNCE_ANGLE;
@@ -449,9 +513,6 @@ fn paddle_collisions(
             // Basically x = x * ( 1 + ratio * 0.2)
             let speed = previous_speed * (1.0 + hit_ratio.abs() * 0.2);
             let speed = speed.clamp(BALL_SPEED, BALL_MAX_SPEED);
-
-            // println!("|| Previous speed: {previous_speed} ||");
-            // println!("|| Speed:          {speed} ||");
 
             // .signum() gives us +1 if the velocity x is positive (ball going right)
             // -1 if velocity x is negative (ball going left)
@@ -491,8 +552,6 @@ fn paddle_collisions(
             let hit_ratio = 
                 (offset / (PADDLE_HEIGHT / 2.0))
                 .clamp(-1.0, 1.0);
-
-                println!("Hit ratio: {hit_ratio}");
                 
             let angle = hit_ratio * MAX_BOUNCE_ANGLE;
     
@@ -505,9 +564,6 @@ fn paddle_collisions(
             let speed = previous_speed * (1.0 + hit_ratio.abs() * 0.2);
             let speed = speed.clamp(BALL_SPEED, BALL_MAX_SPEED);
 
-            // println!("|| Previous speed: {previous_speed} ||");
-            // println!("|| Speed:          {speed} ||");
-            // 
             let direction_x = -ball.velocity.x.signum();
     
             ball.velocity.x = direction_x * speed * angle.cos();
