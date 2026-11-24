@@ -1,3 +1,5 @@
+mod utils;
+
 use bevy::{prelude::*, sprite::Anchor, text::FontFeatureTag};
 
 const WINDOW_WIDTH: f32 = 650.0;
@@ -6,12 +8,28 @@ const WINDOW_HEIGHT: f32 = 450.0;
 
 const BALL_SIZE: f32 = 15.0;
 
-// Resulting magnitude after we put this speed on both X and Y axis is 636.39
-const BALL_SPEED: f32 = 450.0; 
+const BALL_SPEED_X: f32 = 300.0; 
+const BALL_SPEED_Y: f32 = 300.0; 
+
+const BALL_SPEED: f32 = utils::const_sqrt(
+    (BALL_SPEED_X * BALL_SPEED_X) 
+    + 
+    (BALL_SPEED_Y * BALL_SPEED_Y)
+    );
+
+const BALL_MAX_SPEED_X: f32 = BALL_SPEED_X * 2.0;
+const BALL_MAX_SPEED_Y: f32 = BALL_SPEED_Y * 2.0;
 
 // This max speed is the result of plotting increased speed on both axis
 // It's not the speed on each axis
-const BALL_MAX_SPEED: f32 = 800.0;
+const BALL_MAX_SPEED: f32 = utils::const_sqrt(
+    (BALL_MAX_SPEED_X * BALL_MAX_SPEED_X) 
+    + 
+    (BALL_MAX_SPEED_Y * BALL_MAX_SPEED_Y)
+    );
+
+const BALL_SPEED_INCREASE: f32 = 0.3;
+const BALL_SPEED_DECREASE: f32 = 1.02;
 
 const PADDLE_WIDTH: f32 = 15.0;
 const PADDLE_HEIGHT: f32 = WINDOW_HEIGHT / 6.0;
@@ -39,7 +57,7 @@ const SCORE_FONT_SIZE: FontSize = FontSize::Px(42.0);
 const SCORE_X_POSITION: f32 = WINDOW_WIDTH / 10.0;
 const SCORE_Y_POSITION: f32 = WINDOW_HEIGHT / 2.5;
 
-const MAX_SCORE: u32 = 2;
+const MAX_SCORE: u32 = 10;
 
 const WAITING_MESSAGE: &'static str = "UPONG\nPress Enter to start";
 const WON_MESSAGE: &'static str = "YOU WON!\nPress Enter to play again";
@@ -174,7 +192,7 @@ fn setup(mut commands: Commands) {
     // Ball (at center)
     commands.spawn((
         Ball {
-            velocity: Vec2::new(BALL_SPEED, -BALL_SPEED)
+            velocity: Vec2::new(BALL_SPEED_X, -BALL_SPEED_Y)
         },
         Sprite::from_color(
             Color::WHITE,
@@ -264,7 +282,7 @@ fn reset_game(
     
     for (mut ball, mut ball_transform) in &mut ball_query {
         ball_transform.translation = Vec3::ZERO;
-        ball.velocity = Vec2::new(BALL_SPEED, -BALL_SPEED);
+        ball.velocity = Vec2::new(BALL_SPEED_X, -BALL_SPEED_Y);
     }
 
     for mut player_transform in &mut player_query {
@@ -369,19 +387,14 @@ fn player_movement(
 
 
 fn ball_movement(
-    mut query: Query<(&mut Ball, &mut Transform), With<Ball>>,
-    mut scores: ResMut<GameScores>,
     time: Res<Time>,
+    mut scores: ResMut<GameScores>,
+    mut query: Query<(&mut Ball, &mut Transform), With<Ball>>,
 ) {
     for (mut ball, mut transform) in &mut query {
         let dt = time.delta_secs();
 
         transform.translation += ball.velocity.extend(0.0) * dt;
-
-        // We reduce the speed by 2% everytime ball hits wall
-        // This is the inverse of having a hit ratio of 0.1;
-        // which increases speed by 2%
-        let speed_friction = 1.02;
         
         // Restrict the ball from going above/below the screen
         // 
@@ -390,31 +403,36 @@ fn ball_movement(
         // it go below its initial speed
         if transform.translation.y > BALL_MAX_Y {
             transform.translation.y = BALL_MAX_Y;
-            ball.velocity.y = -(ball.velocity.y / speed_friction);
-            ball.velocity.y = ball.velocity.y.min(BALL_SPEED)
+            ball.velocity.y = -(ball.velocity.y / BALL_SPEED_DECREASE);
+            ball.velocity.y = ball.velocity.y.clamp(-BALL_SPEED_Y, BALL_MAX_SPEED_Y)
         } else if transform.translation.y < -BALL_MAX_Y {
             transform.translation.y = -BALL_MAX_Y;
-            ball.velocity.y = -(ball.velocity.y / speed_friction);
-            ball.velocity.y = ball.velocity.y.min(BALL_SPEED)
+            ball.velocity.y = -(ball.velocity.y / BALL_SPEED_DECREASE);
+            ball.velocity.y = ball.velocity.y.clamp(BALL_SPEED_Y, BALL_MAX_SPEED_Y)
         }
 
         // When ball touches right edge (where player is)
         // Player missed
+        // 
+        // Here, we dont have to make the ball bounce because it's being
+        // returned to original position anyway
         if transform.translation.x > BALL_MAX_X {
-            transform.translation.x = BALL_MAX_X;
-            ball.velocity.x = -(ball.velocity.x / speed_friction);
-            ball.velocity.x = ball.velocity.x.min(BALL_SPEED);
-
             scores.enemy += 1;
+
+            // Bring back ball to default position once enemy scores
+            // // But reduce y speed a bit to let player react
+            transform.translation = Vec3::new(ENEMY_POSITION + 20.0, 0.0, 0.0);
+            ball.velocity = Vec2::new(BALL_SPEED_X * ( 1.0 + BALL_SPEED_INCREASE), 0.0);
         }
         // When ball touches left edge (where enemy is)
         // Enemy missed
         else if transform.translation.x < -BALL_MAX_X {
-            transform.translation.x = -BALL_MAX_X;
-            ball.velocity.x = -(ball.velocity.x / speed_friction);
-            ball.velocity.x = ball.velocity.x.min(BALL_SPEED);
-
             scores.player += 1;
+
+            // Bring back ball to default position once player scores
+            // But reduce y speed a bit to let player react
+            transform.translation = Vec3::ZERO;
+            ball.velocity = Vec2::new(BALL_SPEED_X * ( 1.0 + BALL_SPEED_INCREASE), 0.0);
         }        
     }
 }
@@ -508,11 +526,11 @@ fn paddle_collisions(
             // Here, we increase the speed of the ball based on how steeply it touched the paddle
             let previous_speed = ball.velocity.length();
 
-            // This formula increases the speed of the ball by 20% of hit ratio
+            // This formula increases the speed of the ball by BALL_SPEED_INCREASE * 100% of hit ratio
             // when hit ratio is maximum (1.0) and by 2% when hit ratio is 0.1
             // 
-            // Basically x = x * ( 1 + ratio * 0.2)
-            let speed = previous_speed * (1.0 + hit_ratio.abs() * 0.2);
+            // Basically x = x * ( 1 + ratio * BALL_SPEED_INCREASE)
+            let speed = previous_speed * (1.0 + hit_ratio.abs() * BALL_SPEED_INCREASE);
             let speed = speed.clamp(BALL_SPEED, BALL_MAX_SPEED);
 
             // .signum() gives us +1 if the velocity x is positive (ball going right)
@@ -558,11 +576,11 @@ fn paddle_collisions(
     
             // Here, we increase the speed of the ball based on how steeply it touched the paddle
             let previous_speed = ball.velocity.length();
-            // This formula increases the speed of the ball by 20% of hit ratio
+            // This formula increases the speed of the ball by BALL_SPEED_INCREASE * 100% of hit ratio
             // when hit ratio is maximum (1.0) and by 2% when hit ratio is 0.1
             // 
-            // Basically x = x * ( 1 + ratio * 0.2)
-            let speed = previous_speed * (1.0 + hit_ratio.abs() * 0.2);
+            // Basically x = x * ( 1 + ratio * BALL_SPEED_INCREASE)
+            let speed = previous_speed * (1.0 + hit_ratio.abs() * BALL_SPEED_INCREASE);
             let speed = speed.clamp(BALL_SPEED, BALL_MAX_SPEED);
 
             let direction_x = -ball.velocity.x.signum();
