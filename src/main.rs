@@ -1,50 +1,23 @@
+mod diff;
 mod utils;
 
 use bevy::{
-    prelude::*, 
-    sprite::Anchor, 
-    text::FontFeatureTag,
     picking::hover::Hovered,
+    prelude::*,
+    sprite::Anchor,
+    text::FontFeatureTag,
     ui::Pressed,
-    ui_widgets::{observe, Activate, Button}
+    ui_widgets::{Activate, Button, observe},
 };
 
 const WINDOW_WIDTH: f32 = 650.0;
-const WINDOW_HEIGHT: f32 = 450.0; 
+const WINDOW_HEIGHT: f32 = 450.0;
 // diagonal when (w, h) = (650, 450) is 790.5
 
 const BALL_SIZE: f32 = 15.0;
 
-const BALL_SPEED_X: f32 = 300.0; 
-const BALL_SPEED_Y: f32 = 300.0; 
-
-const BALL_SPEED: f32 = utils::const_sqrt(
-    (BALL_SPEED_X * BALL_SPEED_X) 
-    + 
-    (BALL_SPEED_Y * BALL_SPEED_Y)
-    );
-
-const BALL_MAX_SPEED_X: f32 = BALL_SPEED_X * 2.0;
-const BALL_MAX_SPEED_Y: f32 = BALL_SPEED_Y * 2.0;
-
-// This max speed is the result of plotting increased speed on both axis
-// It's not the speed on each axis
-const BALL_MAX_SPEED: f32 = utils::const_sqrt(
-    (BALL_MAX_SPEED_X * BALL_MAX_SPEED_X) 
-    + 
-    (BALL_MAX_SPEED_Y * BALL_MAX_SPEED_Y)
-    );
-
-const BALL_SPEED_INCREASE: f32 = 0.3;
-const BALL_SPEED_DECREASE: f32 = 1.02;
-
 const PADDLE_WIDTH: f32 = 15.0;
 const PADDLE_HEIGHT: f32 = WINDOW_HEIGHT / 6.0;
-const PLAYER_PADDLE_SPEED: f32 = 450.0;
-
-// Make enemy speed 80% of player cuz it would be too unfair otherwise
-const ENEMY_PADDLE_SPEED: f32 = PLAYER_PADDLE_SPEED * 0.8;
-const ENEMY_DISTANCE: f32 = 10.0; // 10 pixels
 
 const PADDLE_MAX_Y: f32 = WINDOW_HEIGHT / 2.0 - PADDLE_HEIGHT / 2.0;
 
@@ -73,10 +46,18 @@ const NORMAL_BUTTON: Color = Color::srgb(0.15, 0.15, 0.15);
 const HOVERED_BUTTON: Color = Color::srgb(0.25, 0.25, 0.25);
 const PRESSED_BUTTON: Color = Color::srgb(0.35, 0.75, 0.35);
 
-#[derive(Component)] struct Ball { velocity: Vec2 }
-#[derive(Component)] struct Paddle { speed: f32 }
-#[derive(Component)] struct Player;
-#[derive(Component)] struct Enemy;
+#[derive(Component)]
+struct Ball {
+    velocity: Vec2,
+}
+#[derive(Component)]
+struct Paddle {
+    speed: f32,
+}
+#[derive(Component)]
+struct Player;
+#[derive(Component)]
+struct Enemy;
 
 #[derive(Resource, PartialEq)]
 enum GamePhase {
@@ -94,16 +75,18 @@ enum AppState {
     InGame,
 }
 
-#[derive(Debug, PartialEq, Eq)] 
-enum Difficulty {
+#[derive(Debug, PartialEq, Eq)]
+pub enum Difficulty {
     Easy,
     Medium,
     Hard,
 }
 
-#[derive(Resource)] struct SelectedDifficulty(Difficulty);
+#[derive(Resource, Debug)]
+struct SelectedDifficulty(Difficulty);
 
-#[derive(Component)] struct GameStatusText;
+#[derive(Component)]
+struct GameStatusText;
 
 #[derive(Resource, Debug, Default)]
 struct GameScores {
@@ -111,31 +94,29 @@ struct GameScores {
     player: u32,
 }
 
-#[derive(Component)] struct Object;
+#[derive(Component)]
+struct Object;
 
 /// Marker component for scores
-#[derive(Component)] struct Score;
+#[derive(Component)]
+struct Score;
 
-#[derive(Component)] struct PlayerScoreText;
-#[derive(Component)] struct EnemyScoreText;
+#[derive(Component)]
+struct PlayerScoreText;
+#[derive(Component)]
+struct EnemyScoreText;
 
 fn main() {
     App::new()
-        .add_plugins(
-            DefaultPlugins.set(
-                WindowPlugin {
-                    primary_window: Some(
-                        Window {
-                            title: "Upong".to_string(),
-                            resolution: (WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32).into(),
-                            resizable: false,
-                            ..default()
-                        }
-                    ),
-                    ..default()
-                }
-            )
-        )
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Upong".to_string(),
+                resolution: (WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32).into(),
+                resizable: false,
+                ..default()
+            }),
+            ..default()
+        }))
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Time::<Fixed>::from_hz(REFRESH_RATE))
         .init_state::<AppState>()
@@ -143,59 +124,54 @@ fn main() {
         .insert_resource(GameScores::default())
         .insert_resource(SelectedDifficulty(Difficulty::Easy))
         .add_systems(Startup, setup)
-        .add_systems(
-            OnEnter(AppState::MainMenu), 
-            setup_menu
-        )
+        .add_systems(OnEnter(AppState::MainMenu), setup_menu)
         .add_systems(
             OnEnter(AppState::DifficultySelection),
             setup_difficulty_menu,
         )
         .add_systems(
             OnEnter(AppState::InGame),
-            (
-                enter_game,
-                setup_game_status_texts
-            ),
-        )
-        .add_systems(Update, 
-            (
-                reset_game, 
-                update_button_appearance,
-                update_game_visibility, 
-                update_game_scores, 
-                update_game_status,
-            ).chain()
+            (enter_game, setup_game_status_texts),
         )
         .add_systems(
-            FixedUpdate, 
+            Update,
+            (
+                reset_game,
+                update_button_appearance,
+                update_game_visibility,
+                update_game_scores,
+                update_game_status,
+            )
+                .chain(),
+        )
+        .add_systems(
+            FixedUpdate,
             (
                 // We want to handle these operations in order
-                player_movement, 
+                player_movement,
                 ball_movement,
                 enemy_movement,
                 paddle_collisions,
-                check_game_over
+                check_game_over,
             )
-            // To handle these operations in order, we use .chain()
-            .chain()
-
-            .run_if(in_state(AppState::InGame))
-            // Those operations will run only if this returns true
-            // The condition here is evaluated for the entire chain;
-            // which doesn't happen after every system call,
-            // It happens after the FixedUpdate system has finished
-            // And FixedUpdate system runs as a whole if this evaluates to true
-            .run_if(is_playing),
+                // To handle these operations in order, we use .chain()
+                .chain()
+                .run_if(in_state(AppState::InGame))
+                // Those operations will run only if this returns true
+                // The condition here is evaluated for the entire chain;
+                // which doesn't happen after every system call,
+                // It happens after the FixedUpdate system has finished
+                // And FixedUpdate system runs as a whole if this evaluates to true
+                .run_if(is_playing),
         )
         .run();
 }
 
 /// Setup just sets up the initial window/page visible to players, and
 /// when they switch to Playing state, then only they see paddles and balls
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, difficulty: Res<SelectedDifficulty>) {
     commands.spawn(Camera2d);
-    
+
     commands.spawn((
         Score,
         EnemyScoreText,
@@ -223,21 +199,18 @@ fn setup(mut commands: Commands) {
         TextLayout::justify(Justify::Center),
         Anchor::CENTER,
         Transform::from_xyz(SCORE_X_POSITION, SCORE_Y_POSITION, 0.0),
-        Visibility::Hidden
+        Visibility::Hidden,
     ));
-    
+
     // Ball (at center)
     commands.spawn((
         Object,
         Ball {
-            velocity: Vec2::new(BALL_SPEED_X, -BALL_SPEED_Y)
+            velocity: Vec2::new(difficulty.ball_speed_x(), -difficulty.ball_speed_y()),
         },
-        Sprite::from_color(
-            Color::WHITE,
-            Vec2::splat(BALL_SIZE),
-        ),
+        Sprite::from_color(Color::WHITE, Vec2::splat(BALL_SIZE)),
         Transform::from_xyz(0.0, 0.0, 0.0),
-        Visibility::Hidden
+        Visibility::Hidden,
     ));
 
     // Player paddle (at right)
@@ -245,18 +218,11 @@ fn setup(mut commands: Commands) {
         Object,
         Player,
         Paddle {
-            speed: PLAYER_PADDLE_SPEED,
+            speed: difficulty.player_paddle_speed(),
         },
-        Sprite::from_color(
-            Color::WHITE,
-            Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)
-        ),
-        Transform::from_xyz(
-            PLAYER_POSITION,
-            0.0,
-            0.0
-        ),
-        Visibility::Hidden
+        Sprite::from_color(Color::WHITE, Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
+        Transform::from_xyz(PLAYER_POSITION, 0.0, 0.0),
+        Visibility::Hidden,
     ));
 
     // Enemy paddle (at left)
@@ -264,25 +230,17 @@ fn setup(mut commands: Commands) {
         Object,
         Enemy,
         Paddle {
-            speed: ENEMY_PADDLE_SPEED,
+            speed: difficulty.enemy_paddle_speed(),
         },
-        Sprite::from_color(
-            Color::WHITE,
-            Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT),
-        ),
-        Transform::from_xyz(
-            ENEMY_POSITION,
-            0.0,
-            0.0
-        ),
-        Visibility::Hidden
+        Sprite::from_color(Color::WHITE, Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
+        Transform::from_xyz(ENEMY_POSITION, 0.0, 0.0),
+        Visibility::Hidden,
     ));
 }
 
 fn setup_menu(mut commands: Commands) {
     commands.spawn((
         DespawnOnExit(AppState::MainMenu),
-        
         Node {
             width: percent(100.0),
             height: percent(100.0),
@@ -302,32 +260,25 @@ fn setup_menu(mut commands: Commands) {
             ),
             (
                 setup_button("START GAME"),
-
                 observe(
-                    |_: On<Activate>,
-                    mut next_state: ResMut<NextState<AppState>> | {
+                    |_: On<Activate>, mut next_state: ResMut<NextState<AppState>>| {
                         next_state.set(AppState::DifficultySelection);
                     }
                 )
             ),
             (
                 setup_button("EXIT"),
-
-                observe(
-                    |_: On<Activate>,
-                    mut exit: MessageWriter<AppExit>| {
-                        exit.write(AppExit::Success);
-                    }
-                )
+                observe(|_: On<Activate>, mut exit: MessageWriter<AppExit>| {
+                    exit.write(AppExit::Success);
+                })
             )
-        ]
+        ],
     ));
 }
 
 fn setup_difficulty_menu(mut commands: Commands) {
     commands.spawn((
         DespawnOnExit(AppState::DifficultySelection),
-
         Node {
             width: percent(100),
             height: percent(100),
@@ -336,7 +287,6 @@ fn setup_difficulty_menu(mut commands: Commands) {
             align_items: AlignItems::Center,
             ..default()
         },
-
         children![
             (
                 Text::new("SELECT DIFFICULTY"),
@@ -348,15 +298,41 @@ fn setup_difficulty_menu(mut commands: Commands) {
             ),
             (
                 setup_button("EASY"),
-
-                observe(|_: On<Activate>,
-                mut selected: ResMut<SelectedDifficulty>,
-                mut next_state: ResMut<NextState<AppState>> | {
-                    selected.0 = Difficulty::Easy;
-                    next_state.set(AppState::InGame);
-                })
+                observe(
+                    |_: On<Activate>,
+                     mut selected: ResMut<SelectedDifficulty>,
+                     mut next_state: ResMut<NextState<AppState>>| {
+                        selected.0 = Difficulty::Easy;
+                        next_state.set(AppState::InGame);
+                        println!("Selected '{selected:#?}' difficulty");
+                    }
+                )
+            ),
+            (
+                setup_button("MEDIUM"),
+                observe(
+                    |_: On<Activate>,
+                     mut selected: ResMut<SelectedDifficulty>,
+                     mut next_state: ResMut<NextState<AppState>>| {
+                        selected.0 = Difficulty::Medium;
+                        next_state.set(AppState::InGame);
+                        println!("Selected '{selected:#?}' difficulty");
+                    }
+                )
+            ),
+            (
+                setup_button("HARD"),
+                observe(
+                    |_: On<Activate>,
+                     mut selected: ResMut<SelectedDifficulty>,
+                     mut next_state: ResMut<NextState<AppState>>| {
+                        selected.0 = Difficulty::Hard;
+                        next_state.set(AppState::InGame);
+                        println!("Selected '{selected:#?}' difficulty");
+                    }
+                )
             )
-        ]
+        ],
     ));
 }
 
@@ -364,7 +340,6 @@ fn setup_button(label: &'static str) -> impl Bundle {
     (
         Button,
         Hovered::default(),
-
         Node {
             width: px(240),
             height: px(60),
@@ -372,10 +347,8 @@ fn setup_button(label: &'static str) -> impl Bundle {
             align_items: AlignItems::Center,
             ..default()
         },
-
         BackgroundColor(NORMAL_BUTTON),
         BorderColor::all(Color::WHITE),
-
         children![(
             Text::new(label),
             TextFont {
@@ -387,53 +360,42 @@ fn setup_button(label: &'static str) -> impl Bundle {
     )
 }
 
-
 fn update_button_appearance(
-    buttons: Query<
-        (&Hovered, Has<Pressed>, &mut BackgroundColor),
-        With<Button>
-    >
+    buttons: Query<(&Hovered, Has<Pressed>, &mut BackgroundColor), With<Button>>,
 ) {
     for (hovered, pressed, mut color) in buttons {
         *color = match (hovered.get(), pressed) {
             (_, true) => PRESSED_BUTTON.into(),
             (true, false) => HOVERED_BUTTON.into(),
-            (false, false) => NORMAL_BUTTON.into()
+            (false, false) => NORMAL_BUTTON.into(),
         }
     }
 }
 
 /// Press enter to start the game and if the game is over
 /// Press enter again to restart
-fn enter_game(
-    mut phase: ResMut<GamePhase>,
-) {
+fn enter_game(mut phase: ResMut<GamePhase>) {
     *phase = GamePhase::Playing;
 
     println!("Entering game!");
 }
 
 /// Reset the paddles & ball back to default if the phase has changed
-/// and the phase is playing; which happens only when user explicitly 
+/// and the phase is playing; which happens only when user explicitly
 /// presses Enter
-/// 
+///
 /// Phase doesn't change to Playing without user pressing Enter
 fn reset_game(
     phase: Res<GamePhase>,
+    difficulty: Res<SelectedDifficulty>,
     mut scores: ResMut<GameScores>,
     mut ball_query: Query<(&mut Ball, &mut Transform), With<Ball>>,
-    mut player_query: Query<
-        &mut Transform,
-        (With<Player>, Without<Ball>, Without<Enemy>)
-    >,
-    mut enemy_query: Query<
-        &mut Transform,
-        (With<Enemy>, Without<Ball>, Without<Player>)
-    >,
+    mut player_query: Query<&mut Transform, (With<Player>, Without<Ball>, Without<Enemy>)>,
+    mut enemy_query: Query<&mut Transform, (With<Enemy>, Without<Ball>, Without<Player>)>,
 ) {
     // If the phase was just changed and current phase is Playing,
     // then only we want to reset the game.
-    // 
+    //
     // Player can transition from Waiting/Won/Lost to Playing by
     // pressing Enter.
     // So whenever that happens; we reset the objects back to default
@@ -443,26 +405,18 @@ fn reset_game(
 
     scores.enemy = 0;
     scores.player = 0;
-    
+
     for (mut ball, mut ball_transform) in &mut ball_query {
         ball_transform.translation = Vec3::ZERO;
-        ball.velocity = Vec2::new(BALL_SPEED_X, -BALL_SPEED_Y);
+        ball.velocity = Vec2::new(difficulty.ball_speed_x(), -difficulty.ball_speed_y());
     }
 
     for mut player_transform in &mut player_query {
-        player_transform.translation = Vec3::new(
-            PLAYER_POSITION,
-            0.0,
-            0.0
-        );
+        player_transform.translation = Vec3::new(PLAYER_POSITION, 0.0, 0.0);
     }
 
     for mut enemy_transform in &mut enemy_query {
-        enemy_transform.translation = Vec3::new(
-            ENEMY_POSITION,
-            0.0,
-            0.0
-        );
+        enemy_transform.translation = Vec3::new(ENEMY_POSITION, 0.0, 0.0);
     }
 }
 
@@ -473,10 +427,8 @@ fn is_playing(phase: Res<GamePhase>) -> bool {
 /// This makes all the components visible when we are not waiting
 fn update_game_visibility(
     phase: Res<GamePhase>,
-    mut score: Query<&mut Visibility, 
-        (With<Score>, Without<Object>)>,
-    mut object: Query<&mut Visibility, 
-        (With<Object>, Without<Score>)>,
+    mut score: Query<&mut Visibility, (With<Score>, Without<Object>)>,
+    mut object: Query<&mut Visibility, (With<Object>, Without<Score>)>,
 ) {
     if !phase.is_changed() {
         return;
@@ -492,7 +444,7 @@ fn update_game_visibility(
     }
 
     for mut score_visibility in &mut score {
-        * score_visibility = visibility;
+        *score_visibility = visibility;
     }
 }
 
@@ -501,10 +453,8 @@ fn update_game_visibility(
 /// of Playing game phase
 fn update_game_scores(
     scores: Res<GameScores>,
-    mut player_score_query: Query<&mut Text2d,
-        (With<PlayerScoreText>, Without<EnemyScoreText>)>,
-    mut enemy_score_query: Query<&mut Text2d,
-        (With<EnemyScoreText>, Without<PlayerScoreText>)>,
+    mut player_score_query: Query<&mut Text2d, (With<PlayerScoreText>, Without<EnemyScoreText>)>,
+    mut enemy_score_query: Query<&mut Text2d, (With<EnemyScoreText>, Without<PlayerScoreText>)>,
 ) {
     if !scores.is_changed() {
         return;
@@ -521,16 +471,16 @@ fn update_game_scores(
 
 fn setup_game_status_texts(mut commands: Commands) {
     // The initial text that appears on screen
-    commands.spawn(Node {
-        width: percent(100.0),
-        height: percent(100.0),
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        ..default()
-    })
-    .with_children(|parent| {
-        parent.spawn(
-            (
+    commands
+        .spawn(Node {
+            width: percent(100.0),
+            height: percent(100.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
                 GameStatusText,
                 Text::new(""),
                 TextFont {
@@ -539,25 +489,24 @@ fn setup_game_status_texts(mut commands: Commands) {
                 },
                 TextColor(Color::WHITE),
                 TextLayout::justify(Justify::Center),
-            )
-        );
-    });
+            ));
+        });
 }
 
 fn update_game_status(
-    phase: Res<GamePhase>,
-    mut query: Query<&mut Text, With<GameStatusText>>,
+    phase: Res<GamePhase>, 
+    mut query: Query<&mut Text, With<GameStatusText>>
 ) {
     if !phase.is_changed() {
         return;
     }
-    
+
     let message = match *phase {
         GamePhase::Won => WON_MESSAGE,
         GamePhase::Lost => LOST_MESSAGE,
-        _ => ""
+        _ => "",
     };
-    
+
     for mut text in &mut query {
         text.0 = message.to_string();
     }
@@ -566,8 +515,8 @@ fn update_game_status(
 /// This declares that player has won/lost based on whose score
 /// has reached max score
 fn check_game_over(
-    mut phase: ResMut<GamePhase>,
-    scores: Res<GameScores>,
+    mut phase: ResMut<GamePhase>, 
+    scores: Res<GameScores>
 ) {
     // Player either wins or loses only when either has reached max score
     if scores.enemy >= MAX_SCORE {
@@ -599,9 +548,9 @@ fn player_movement(
     }
 }
 
-
 fn ball_movement(
     time: Res<Time>,
+    difficulty: Res<SelectedDifficulty>,
     mut scores: ResMut<GameScores>,
     mut query: Query<(&mut Ball, &mut Transform), With<Ball>>,
 ) {
@@ -609,25 +558,31 @@ fn ball_movement(
         let dt = time.delta_secs();
 
         transform.translation += ball.velocity.extend(0.0) * dt;
-        
+
         // Restrict the ball from going above/below the screen
-        // 
+        //
         // We introduce a little friction to reduce the speed of
         // the ball everytime it hits the wall but without letting
         // it go below its initial speed
         if transform.translation.y > BALL_MAX_Y {
             transform.translation.y = BALL_MAX_Y;
-            ball.velocity.y = -(ball.velocity.y / BALL_SPEED_DECREASE);
-            ball.velocity.y = ball.velocity.y.clamp(-BALL_SPEED_Y, BALL_MAX_SPEED_Y)
+            ball.velocity.y = -(ball.velocity.y / difficulty.ball_speed_decrease());
+            ball.velocity.y = ball
+                .velocity
+                .y
+                .clamp(-difficulty.ball_speed_y(), difficulty.ball_max_speed_y());
         } else if transform.translation.y < -BALL_MAX_Y {
             transform.translation.y = -BALL_MAX_Y;
-            ball.velocity.y = -(ball.velocity.y / BALL_SPEED_DECREASE);
-            ball.velocity.y = ball.velocity.y.clamp(BALL_SPEED_Y, BALL_MAX_SPEED_Y)
+            ball.velocity.y = -(ball.velocity.y / difficulty.ball_speed_decrease());
+            ball.velocity.y = ball
+                .velocity
+                .y
+                .clamp(difficulty.ball_speed_y(), difficulty.ball_max_speed_y());
         }
 
         // When ball touches right edge (where player is)
         // Player missed
-        // 
+        //
         // Here, we dont have to make the ball bounce because it's being
         // returned to original position anyway
         if transform.translation.x > BALL_MAX_X {
@@ -636,7 +591,10 @@ fn ball_movement(
             // Bring back ball to default position once enemy scores
             // // But reduce y speed a bit to let player react
             transform.translation = Vec3::new(ENEMY_POSITION + 20.0, 0.0, 0.0);
-            ball.velocity = Vec2::new(BALL_SPEED_X * ( 1.0 + BALL_SPEED_INCREASE), 0.0);
+            ball.velocity = Vec2::new(
+                difficulty.ball_speed_x() * (1.0 + difficulty.ball_speed_increase()),
+                0.0,
+            );
         }
         // When ball touches left edge (where enemy is)
         // Enemy missed
@@ -646,17 +604,19 @@ fn ball_movement(
             // Bring back ball to default position once player scores
             // But reduce y speed a bit to let player react
             transform.translation = Vec3::ZERO;
-            ball.velocity = Vec2::new(BALL_SPEED_X * ( 1.0 + BALL_SPEED_INCREASE), 0.0);
-        }        
+            ball.velocity = Vec2::new(
+                difficulty.ball_speed_x() * (1.0 + difficulty.ball_speed_increase()),
+                0.0,
+            );
+        }
     }
 }
 
-
 fn enemy_movement(
     time: Res<Time>,
+    difficulty: Res<SelectedDifficulty>,
     ball_query: Query<&Transform, With<Ball>>,
-    mut enemy_query: Query<(&Paddle, &mut Transform),
-        (With<Enemy>, Without<Ball>)>,
+    mut enemy_query: Query<(&Paddle, &mut Transform), (With<Enemy>, Without<Ball>)>,
 ) {
     let Some(ball_transform) = ball_query.iter().next() else {
         return;
@@ -667,25 +627,24 @@ fn enemy_movement(
     for (paddle, mut transform) in &mut enemy_query {
         let difference = ball_y - transform.translation.y;
 
-        if difference.abs() > ENEMY_DISTANCE {
+        if difference.abs() > difficulty.enemy_distance() {
             transform.translation.y += difference.signum() * paddle.speed * time.delta_secs();
         }
-        
+
         transform.translation.y = transform.translation.y.clamp(-PADDLE_MAX_Y, PADDLE_MAX_Y);
     }
 }
 
-/// For now, this assumes that right paddle is the user paddle 
+/// For now, this assumes that right paddle is the user paddle
 /// and left paddle is the enemy paddle
 fn paddle_collisions(
+    difficulty: Res<SelectedDifficulty>,
     mut ball_query: Query<(&mut Ball, &mut Transform), With<Ball>>,
-    player_query: Query<&Transform,
-        (With<Player>, Without<Ball>)>,
-    enemy_query: Query<&Transform,
-        (With<Enemy>, Without<Ball>)>,
+    player_query: Query<&Transform, (With<Player>, Without<Ball>)>,
+    enemy_query: Query<&Transform, (With<Enemy>, Without<Ball>)>,
 ) {
     let (Some(player_transform), Some(enemy_transform)) =
-        (player_query.iter().next(), enemy_query.iter().next()) 
+        (player_query.iter().next(), enemy_query.iter().next())
     else {
         return;
     };
@@ -697,11 +656,9 @@ fn paddle_collisions(
         let ball_position = ball_transform.translation;
 
         // Moving right; where the player paddle is
-        if ball.velocity.x > 0.0 
-            && (ball_position.x - player_transform.translation.x).abs()
-            <= required_x_distance
-            && (ball_position.y - player_transform.translation.y).abs()
-            <= required_y_distance 
+        if ball.velocity.x > 0.0
+            && (ball_position.x - player_transform.translation.x).abs() <= required_x_distance
+            && (ball_position.y - player_transform.translation.y).abs() <= required_y_distance
         {
             // println!("Hit right paddle!");
             // Move/stop it right where they touch
@@ -717,40 +674,35 @@ fn paddle_collisions(
             // the offset to get a relative measurement based on the usable
             // vertical range of the paddle, which is the length from center
             // not the whole length
-            // 
+            //
             // That's what I studied in class; maybe in movement in inertia
             // chapter; idk
-            // 
+            //
             // We clamp it between -1 to +1 to account for the situation where
             // the ball can hit paddle while its center is above/below the paddles
-            // vertical boundaries, this happens cuz we are using sizes/lengths 
+            // vertical boundaries, this happens cuz we are using sizes/lengths
             // of both objects.
             // Clamping between -1 to +1 ensures the ball doesn't bounce/reflect
             // aggresively if it hit at the very edge
-            let hit_ratio = 
-                (offset / (PADDLE_HEIGHT / 2.0))
-                .clamp(-1.0, 1.0);
-                
+            let hit_ratio = (offset / (PADDLE_HEIGHT / 2.0)).clamp(-1.0, 1.0);
+
             // What final angle we have got based on the ratio and max angle we have set
             let angle = hit_ratio * MAX_BOUNCE_ANGLE;
 
-            // Take the magnitude of the velocity (speed) which is always positive and 
+            // Take the magnitude of the velocity (speed) which is always positive and
             // doesn't have any direction
-            // 
+            //
             // Here, we increase the speed of the ball based on how steeply it touched the paddle
             let previous_speed = ball.velocity.length();
 
-            // This formula increases the speed of the ball by BALL_SPEED_INCREASE * 100% of hit ratio
-            // when hit ratio is maximum (1.0) and by 2% when hit ratio is 0.1
-            // 
-            // Basically x = x * ( 1 + ratio * BALL_SPEED_INCREASE)
-            let speed = previous_speed * (1.0 + hit_ratio.abs() * BALL_SPEED_INCREASE);
-            let speed = speed.clamp(BALL_SPEED, BALL_MAX_SPEED);
+            // This formula scales the ball speed according to the hit ratio.
+            let speed = previous_speed * (1.0 + hit_ratio.abs() * difficulty.ball_speed_increase());
+            let speed = speed.clamp(difficulty.ball_speed(), difficulty.ball_max_speed());
 
             // .signum() gives us +1 if the velocity x is positive (ball going right)
             // -1 if velocity x is negative (ball going left)
             // 0 if velocity x is zero (when ball is not travelling, ig?)
-            // 
+            //
             // So we simply reverse whatever direction ball was going in
             // Eg: reversed towards left if the ball was going right
             let direction_x = -ball.velocity.x.signum();
@@ -762,43 +714,36 @@ fn paddle_collisions(
             ball.velocity.x = direction_x * speed * angle.cos();
 
             // Vy = vsin(theta)
-            // We use original speed because we want to keep the speed 
+            // We use original speed because we want to keep the speed
             // of the ball same and just change the direction via sin(angle)
             ball.velocity.y = speed * angle.sin();
 
             // I hope the formulas are correct cuz that's what I remembered
             // from what I had studied
-        } 
+        }
         // Moving left; towards enemy paddle
-        else if ball.velocity.x < 0.0 
-            && (ball_position.x - enemy_transform.translation.x).abs()
-            <= required_x_distance
-            && (ball_position.y - enemy_transform.translation.y).abs()
-            <= required_y_distance
+        else if ball.velocity.x < 0.0
+            && (ball_position.x - enemy_transform.translation.x).abs() <= required_x_distance
+            && (ball_position.y - enemy_transform.translation.y).abs() <= required_y_distance
         {
             // println!("Hit left paddle!");
             // Push it required_x_distance right to stop it from overlapping more
             ball_transform.translation.x = enemy_transform.translation.x + required_x_distance;
 
             let offset = ball_position.y - enemy_transform.translation.y;
-    
-            let hit_ratio = 
-                (offset / (PADDLE_HEIGHT / 2.0))
-                .clamp(-1.0, 1.0);
-                
+
+            let hit_ratio = (offset / (PADDLE_HEIGHT / 2.0)).clamp(-1.0, 1.0);
+
             let angle = hit_ratio * MAX_BOUNCE_ANGLE;
-    
+
             // Here, we increase the speed of the ball based on how steeply it touched the paddle
             let previous_speed = ball.velocity.length();
-            // This formula increases the speed of the ball by BALL_SPEED_INCREASE * 100% of hit ratio
-            // when hit ratio is maximum (1.0) and by 2% when hit ratio is 0.1
-            // 
-            // Basically x = x * ( 1 + ratio * BALL_SPEED_INCREASE)
-            let speed = previous_speed * (1.0 + hit_ratio.abs() * BALL_SPEED_INCREASE);
-            let speed = speed.clamp(BALL_SPEED, BALL_MAX_SPEED);
+            // Scale the ball speed according to the hit ratio.
+            let speed = previous_speed * (1.0 + hit_ratio.abs() * difficulty.ball_speed_increase());
+            let speed = speed.clamp(difficulty.ball_speed(), difficulty.ball_max_speed());
 
             let direction_x = -ball.velocity.x.signum();
-    
+
             ball.velocity.x = direction_x * speed * angle.cos();
             ball.velocity.y = speed * angle.sin();
         }
