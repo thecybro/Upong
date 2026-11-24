@@ -1,6 +1,13 @@
 mod utils;
 
-use bevy::{prelude::*, sprite::Anchor, text::FontFeatureTag};
+use bevy::{
+    prelude::*, 
+    sprite::Anchor, 
+    text::FontFeatureTag,
+    picking::hover::Hovered,
+    ui::Pressed,
+    ui_widgets::{observe, Activate, Button}
+};
 
 const WINDOW_WIDTH: f32 = 650.0;
 const WINDOW_HEIGHT: f32 = 450.0; 
@@ -59,9 +66,12 @@ const SCORE_Y_POSITION: f32 = WINDOW_HEIGHT / 2.5;
 
 const MAX_SCORE: u32 = 10;
 
-const WAITING_MESSAGE: &'static str = "UPONG\nPress Enter to start";
 const WON_MESSAGE: &'static str = "YOU WON!\nPress Enter to play again";
 const LOST_MESSAGE: &'static str = "You lost!\nPress Enter to try again";
+
+const NORMAL_BUTTON: Color = Color::srgb(0.15, 0.15, 0.15);
+const HOVERED_BUTTON: Color = Color::srgb(0.25, 0.25, 0.25);
+const PRESSED_BUTTON: Color = Color::srgb(0.35, 0.75, 0.35);
 
 #[derive(Component)] struct Ball { velocity: Vec2 }
 #[derive(Component)] struct Paddle { speed: f32 }
@@ -75,6 +85,23 @@ enum GamePhase {
     Won,
     Lost,
 }
+
+#[derive(Default, States, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum AppState {
+    #[default]
+    MainMenu,
+    DifficultySelection,
+    InGame,
+}
+
+#[derive(Debug, PartialEq, Eq)] 
+enum Difficulty {
+    Easy,
+    Medium,
+    Hard,
+}
+
+#[derive(Resource)] struct SelectedDifficulty(Difficulty);
 
 #[derive(Component)] struct GameStatusText;
 
@@ -111,16 +138,33 @@ fn main() {
         )
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(Time::<Fixed>::from_hz(REFRESH_RATE))
+        .init_state::<AppState>()
         .insert_resource(GamePhase::Waiting)
         .insert_resource(GameScores::default())
+        .insert_resource(SelectedDifficulty(Difficulty::Easy))
         .add_systems(Startup, setup)
+        .add_systems(
+            OnEnter(AppState::MainMenu), 
+            setup_menu
+        )
+        .add_systems(
+            OnEnter(AppState::DifficultySelection),
+            setup_difficulty_menu,
+        )
+        .add_systems(
+            OnEnter(AppState::InGame),
+            (
+                enter_game,
+                setup_game_status_texts
+            ),
+        )
         .add_systems(Update, 
             (
-                start_game, 
                 reset_game, 
+                update_button_appearance,
                 update_game_visibility, 
                 update_game_scores, 
-                update_game_status
+                update_game_status,
             ).chain()
         )
         .add_systems(
@@ -136,6 +180,7 @@ fn main() {
             // To handle these operations in order, we use .chain()
             .chain()
 
+            .run_if(in_state(AppState::InGame))
             // Those operations will run only if this returns true
             // The condition here is evaluated for the entire chain;
             // which doesn't happen after every system call,
@@ -150,30 +195,7 @@ fn main() {
 /// when they switch to Playing state, then only they see paddles and balls
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
-
-    // The initial text that appears on screen
-    commands.spawn(Node {
-        width: percent(100.0),
-        height: percent(100.0),
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        ..default()
-    })
-    .with_children(|parent| {
-        parent.spawn(
-            (
-                GameStatusText,
-                Text::new(WAITING_MESSAGE.to_string()),
-                TextFont {
-                    font_size: TEXT_FONT_SIZE,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-                TextLayout::justify(Justify::Center),
-            )
-        );
-    });
-
+    
     commands.spawn((
         Score,
         EnemyScoreText,
@@ -257,17 +279,138 @@ fn setup(mut commands: Commands) {
     ));
 }
 
+fn setup_menu(mut commands: Commands) {
+    commands.spawn((
+        DespawnOnExit(AppState::MainMenu),
+        
+        Node {
+            width: percent(100.0),
+            height: percent(100.0),
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        children![
+            (
+                Text::new("Upong"),
+                TextFont {
+                    font_size: TEXT_FONT_SIZE,
+                    ..default()
+                },
+                TextColor(Color::WHITE)
+            ),
+            (
+                setup_button("START GAME"),
+
+                observe(
+                    |_: On<Activate>,
+                    mut next_state: ResMut<NextState<AppState>> | {
+                        next_state.set(AppState::DifficultySelection);
+                    }
+                )
+            ),
+            (
+                setup_button("EXIT"),
+
+                observe(
+                    |_: On<Activate>,
+                    mut exit: MessageWriter<AppExit>| {
+                        exit.write(AppExit::Success);
+                    }
+                )
+            )
+        ]
+    ));
+}
+
+fn setup_difficulty_menu(mut commands: Commands) {
+    commands.spawn((
+        DespawnOnExit(AppState::DifficultySelection),
+
+        Node {
+            width: percent(100),
+            height: percent(100),
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+
+        children![
+            (
+                Text::new("SELECT DIFFICULTY"),
+                TextFont {
+                    font_size: TEXT_FONT_SIZE,
+                    ..default()
+                },
+                TextColor(Color::WHITE)
+            ),
+            (
+                setup_button("EASY"),
+
+                observe(|_: On<Activate>,
+                mut selected: ResMut<SelectedDifficulty>,
+                mut next_state: ResMut<NextState<AppState>> | {
+                    selected.0 = Difficulty::Easy;
+                    next_state.set(AppState::InGame);
+                })
+            )
+        ]
+    ));
+}
+
+fn setup_button(label: &'static str) -> impl Bundle {
+    (
+        Button,
+        Hovered::default(),
+
+        Node {
+            width: px(240),
+            height: px(60),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+
+        BackgroundColor(NORMAL_BUTTON),
+        BorderColor::all(Color::WHITE),
+
+        children![(
+            Text::new(label),
+            TextFont {
+                font_size: TEXT_FONT_SIZE,
+                ..default()
+            },
+            TextColor(Color::WHITE)
+        )],
+    )
+}
+
+
+fn update_button_appearance(
+    buttons: Query<
+        (&Hovered, Has<Pressed>, &mut BackgroundColor),
+        With<Button>
+    >
+) {
+    for (hovered, pressed, mut color) in buttons {
+        *color = match (hovered.get(), pressed) {
+            (_, true) => PRESSED_BUTTON.into(),
+            (true, false) => HOVERED_BUTTON.into(),
+            (false, false) => NORMAL_BUTTON.into()
+        }
+    }
+}
+
 /// Press enter to start the game and if the game is over
 /// Press enter again to restart
-fn start_game(
-    keyboard: Res<ButtonInput<KeyCode>>,
+fn enter_game(
     mut phase: ResMut<GamePhase>,
 ) {
-    if *phase != GamePhase::Playing 
-    && keyboard.just_pressed(KeyCode::Enter)
-    {
-        *phase = GamePhase::Playing;
-    }
+    *phase = GamePhase::Playing;
+
+    println!("Entering game!");
 }
 
 /// Reset the paddles & ball back to default if the phase has changed
@@ -376,6 +519,31 @@ fn update_game_scores(
     }
 }
 
+fn setup_game_status_texts(mut commands: Commands) {
+    // The initial text that appears on screen
+    commands.spawn(Node {
+        width: percent(100.0),
+        height: percent(100.0),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        ..default()
+    })
+    .with_children(|parent| {
+        parent.spawn(
+            (
+                GameStatusText,
+                Text::new(""),
+                TextFont {
+                    font_size: TEXT_FONT_SIZE,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                TextLayout::justify(Justify::Center),
+            )
+        );
+    });
+}
+
 fn update_game_status(
     phase: Res<GamePhase>,
     mut query: Query<&mut Text, With<GameStatusText>>,
@@ -385,10 +553,9 @@ fn update_game_status(
     }
     
     let message = match *phase {
-        GamePhase::Waiting => WAITING_MESSAGE,
-        GamePhase::Playing => "",
         GamePhase::Won => WON_MESSAGE,
         GamePhase::Lost => LOST_MESSAGE,
+        _ => ""
     };
     
     for mut text in &mut query {

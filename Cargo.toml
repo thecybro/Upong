@@ -22,5 +22,17 @@ path = "src/main.rs"
 bevy = {
     version = "0.20.1",
     default-features = false,
-    features = ["std", "debug", "bevy_winit", "x11", "wayland", "default_font", "2d_bevy_render", "ui_bevy_render"]
+    features = [
+        "std", 
+        "debug", 
+        "bevy_winit", 
+        "x11", 
+        "wayland", 
+        "default_font", 
+        "2d_bevy_render", 
+        "ui_bevy_render", 
+        "ui_picking", 
+        "bevy_state",
+        "bevy_ui_widgets"
+    ]
 }
