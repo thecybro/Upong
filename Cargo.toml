@@ -1,16 +1,26 @@
 [package]
 name = "upong"
-version = "0.2.0"
-rust-version = "1.86.0"
+version = "0.3.0"
+rust-version = "1.97.0"
 edition = "2024"
 license = "MIT"
 
-description = "A simple pong game written completely from scratch in rust"
+description = "A simple pong game written completely in rust"
 readme = "README.md"
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = 3
 
 [[bin]]
 name = "upong"
 path = "src/main.rs"
 
 [dependencies]
-minifb = "0.29.0"
+bevy = {
+    version = "0.20.1",
+    default-features = false,
+    features = ["std", "debug", "bevy_winit", "x11", "wayland", "default_font", "2d_bevy_render", "ui_bevy_render"]
+}

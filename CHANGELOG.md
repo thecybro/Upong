@@ -23,6 +23,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
   - Added functionality to determine who actually won/lost
+  - Added a proper game start/restart mechanism
+  - Added menu and win/loss texts
+  - Added scores for both player and enemy and win/loss on max score
 
-#### Planned
-  - Adding a proper game restart mechanism
+### Fixed
+  - Tuned the change in ball speeds on collisions with paddle and wall
