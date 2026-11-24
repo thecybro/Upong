@@ -84,6 +84,11 @@ struct GameScores {
     player: u32,
 }
 
+#[derive(Component)] struct Object;
+
+/// Marker component for scores
+#[derive(Component)] struct Score;
+
 #[derive(Component)] struct PlayerScoreText;
 #[derive(Component)] struct EnemyScoreText;
 
@@ -110,7 +115,13 @@ fn main() {
         .insert_resource(GameScores::default())
         .add_systems(Startup, setup)
         .add_systems(Update, 
-            (start_game, reset_game, update_game_scores, update_game_status).chain()
+            (
+                start_game, 
+                reset_game, 
+                update_game_visibility, 
+                update_game_scores, 
+                update_game_status
+            ).chain()
         )
         .add_systems(
             FixedUpdate, 
@@ -164,6 +175,7 @@ fn setup(mut commands: Commands) {
     });
 
     commands.spawn((
+        Score,
         EnemyScoreText,
         Text2d::new("0"),
         TextFont {
@@ -173,10 +185,12 @@ fn setup(mut commands: Commands) {
         },
         TextLayout::justify(Justify::Center),
         Anchor::CENTER,
-        Transform::from_xyz(-SCORE_X_POSITION, SCORE_Y_POSITION, 0.0)
+        Transform::from_xyz(-SCORE_X_POSITION, SCORE_Y_POSITION, 0.0),
+        Visibility::Hidden,
     ));
 
     commands.spawn((
+        Score,
         PlayerScoreText,
         Text2d::new("0"),
         TextFont {
@@ -186,11 +200,13 @@ fn setup(mut commands: Commands) {
         },
         TextLayout::justify(Justify::Center),
         Anchor::CENTER,
-        Transform::from_xyz(SCORE_X_POSITION, SCORE_Y_POSITION, 0.0)
+        Transform::from_xyz(SCORE_X_POSITION, SCORE_Y_POSITION, 0.0),
+        Visibility::Hidden
     ));
     
     // Ball (at center)
     commands.spawn((
+        Object,
         Ball {
             velocity: Vec2::new(BALL_SPEED_X, -BALL_SPEED_Y)
         },
@@ -198,11 +214,13 @@ fn setup(mut commands: Commands) {
             Color::WHITE,
             Vec2::splat(BALL_SIZE),
         ),
-        Transform::from_xyz(0.0, 0.0, 0.0)
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        Visibility::Hidden
     ));
 
     // Player paddle (at right)
     commands.spawn((
+        Object,
         Player,
         Paddle {
             speed: PLAYER_PADDLE_SPEED,
@@ -215,11 +233,13 @@ fn setup(mut commands: Commands) {
             PLAYER_POSITION,
             0.0,
             0.0
-        )
+        ),
+        Visibility::Hidden
     ));
 
     // Enemy paddle (at left)
     commands.spawn((
+        Object,
         Enemy,
         Paddle {
             speed: ENEMY_PADDLE_SPEED,
@@ -232,7 +252,8 @@ fn setup(mut commands: Commands) {
             ENEMY_POSITION,
             0.0,
             0.0
-        )
+        ),
+        Visibility::Hidden
     ));
 }
 
@@ -304,6 +325,32 @@ fn reset_game(
 
 fn is_playing(phase: Res<GamePhase>) -> bool {
     *phase == GamePhase::Playing
+}
+
+/// This makes all the components visible when we are not waiting
+fn update_game_visibility(
+    phase: Res<GamePhase>,
+    mut score: Query<&mut Visibility, 
+        (With<Score>, Without<Object>)>,
+    mut object: Query<&mut Visibility, 
+        (With<Object>, Without<Score>)>,
+) {
+    if !phase.is_changed() {
+        return;
+    }
+
+    let visibility = match *phase {
+        GamePhase::Waiting => Visibility::Hidden,
+        _ => Visibility::Visible,
+    };
+
+    for mut object_visibility in &mut object {
+        *object_visibility = visibility;
+    }
+
+    for mut score_visibility in &mut score {
+        * score_visibility = visibility;
+    }
 }
 
 /// This increases the score if the score has increased somehow
