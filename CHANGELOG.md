@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 
 -----
   
-## [v0.3.0] (unreleased)
+## [v0.3.0]
 
 ### Added
   - Added functionality to determine who actually won/lost
@@ -29,3 +29,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
   - Tuned the change in ball speeds on collisions with paddle and wall
+
+----
+
+## [v0.4.0]
+
+### Added
+  - Added difficulty levels
+  - Added a menu for users to choose difficulty levels
+  - Added a way to restart the game
+  - Added button support to select menu options

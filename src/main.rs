@@ -126,11 +126,25 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             OnEnter(AppState::MainMenu), 
-            setup_menu
+                setup_menu,
         )
         .add_systems(
             OnEnter(AppState::DifficultySelection),
-            setup_difficulty_menu,
+                setup_difficulty_menu,
+        )
+        .add_systems(
+            Update,
+            select_menu_option_by_key
+                .run_if(
+                    in_state(AppState::MainMenu)
+                )
+        )
+        .add_systems(
+            Update,
+            select_difficulty_by_key
+                .run_if(
+                    in_state(AppState::DifficultySelection)
+                )
         )
         .add_systems(
             Update, 

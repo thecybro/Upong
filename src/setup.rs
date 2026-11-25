@@ -27,15 +27,16 @@ pub(crate) fn setup_menu(mut commands: Commands) {
                 TextColor(Color::WHITE)
             ),
             (
-                setup_button("START GAME"),
+                setup_button("START GAME [enter]", 350, 80),
                 observe(
-                    |_: On<Activate>, mut next_state: ResMut<NextState<AppState>>| {
+                    |_: On<Activate>, 
+                    mut next_state: ResMut<NextState<AppState>>| {
                         next_state.set(AppState::DifficultySelection);
                     }
                 )
             ),
             (
-                setup_button("EXIT"),
+                setup_button("EXIT [esc]", 240, 60),
                 observe(|_: On<Activate>, mut exit: MessageWriter<AppExit>| {
                     exit.write(AppExit::Success);
                 })
@@ -65,7 +66,7 @@ pub(crate) fn setup_difficulty_menu(mut commands: Commands) {
                 TextColor(Color::WHITE)
             ),
             (
-                setup_button("EASY"),
+                setup_button("EASY [e]", 240, 60),
                 observe(
                     |_: On<Activate>,
                      mut selected: ResMut<SelectedDifficulty>,
@@ -77,7 +78,7 @@ pub(crate) fn setup_difficulty_menu(mut commands: Commands) {
                 )
             ),
             (
-                setup_button("MEDIUM"),
+                setup_button("MEDIUM [m]", 240, 60),
                 observe(
                     |_: On<Activate>,
                      mut selected: ResMut<SelectedDifficulty>,
@@ -89,7 +90,7 @@ pub(crate) fn setup_difficulty_menu(mut commands: Commands) {
                 )
             ),
             (
-                setup_button("HARD"),
+                setup_button("HARD [h]", 240, 60),
                 observe(
                     |_: On<Activate>,
                      mut selected: ResMut<SelectedDifficulty>,
@@ -104,13 +105,13 @@ pub(crate) fn setup_difficulty_menu(mut commands: Commands) {
     ));
 }
 
-pub(crate) fn setup_button(label: &'static str) -> impl Bundle {
+pub(crate) fn setup_button(label: &'static str, width: u16, height: u16) -> impl Bundle {
     (
         Button,
         Hovered::default(),
         Node {
-            width: px(240),
-            height: px(60),
+            width: px(width),
+            height: px(height),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             ..default()

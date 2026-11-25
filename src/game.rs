@@ -10,10 +10,12 @@ pub(crate) const MESSAGE_Y_POSITION: f32 = WINDOW_HEIGHT / 4.0;
 
 pub(crate) fn enter_game(
     mut phase: ResMut<GamePhase>,
+    // selected: Res<SelectedDifficulty>,
 ) {
     *phase = GamePhase::Playing;
-    
+
     println!("Entering game!");
+    // println!("Selected difficulty: {selected:#?}");
 }
 
 /// If the user has lost/won, bring them back to main menu;
@@ -68,6 +70,41 @@ pub(crate) fn reset_game_objects(
 
     for mut enemy_transform in &mut enemy_query {
         enemy_transform.translation = Vec3::new(ENEMY_POSITION, 0.0, 0.0);
+    }
+}
+
+/// Let users select menu option by pressing keys as well
+pub(crate) fn select_menu_option_by_key(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut exit: MessageWriter<AppExit>
+) {
+    if keyboard.just_pressed(KeyCode::Enter) {
+        next_state.set(AppState::DifficultySelection);
+    } else if keyboard.just_pressed(KeyCode::Escape) {
+        exit.write(AppExit::Success);
+    }
+}
+
+/// Let users select difficulty by key as well
+pub(crate) fn select_difficulty_by_key(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut selected: ResMut<SelectedDifficulty>,
+    mut next_state: ResMut<NextState<AppState>>
+) {
+    let difficulty = if keyboard.just_pressed(KeyCode::KeyE) {
+        Some(Difficulty::Easy)
+    } else if keyboard.just_pressed(KeyCode::KeyM) {
+        Some(Difficulty::Medium)
+    } else if keyboard.just_pressed(KeyCode::KeyH) {
+        Some(Difficulty::Hard)
+    } else {
+        None
+    };
+
+    if let Some(diff) = difficulty {
+        selected.0 = diff;
+        next_state.set(AppState::InGame);
     }
 }
 
